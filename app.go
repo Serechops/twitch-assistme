@@ -16,21 +16,13 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
-// twitchClientID is the public Twitch application client ID.
-// Safe to embed in open-source builds — it identifies the app, not a user.
-const twitchClientID = "g38s8mgmpbzg3b70cvlhagmue6l8v5"
+// twitchClientID is the Twitch application client ID, loaded from TWITCH_AISSISTME_CLIENT_ID env var.
+var twitchClientID = os.Getenv("TWITCH_AISSISTME_CLIENT_ID")
 
 // twitchClientSecret enables the Authorization Code flow (confidential client).
-//
-// HOW TO ENABLE the smoother OAuth experience:
-//  1. Go to https://dev.twitch.tv/console/apps and open your app.
-//  2. Change the OAuth client type to "Confidential".
-//  3. Copy the generated Client Secret and paste it below.
-//  4. Make sure http://localhost:3333 is listed as a redirect URI.
-//
-// Leave empty to fall back to the Device Code Grant Flow (no secret required,
-// but requires a browser "activate" step on every login).
-const twitchClientSecret = "REDACTED_SECRET"
+// Loaded from TWITCH_AISSISTME_SECRET_KEY env var.
+// Leave unset to fall back to the Device Code Grant Flow (no secret required).
+var twitchClientSecret = os.Getenv("TWITCH_AISSISTME_SECRET_KEY")
 
 const (
 	twitchRedirectURI = "http://localhost:3333"
