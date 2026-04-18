@@ -23,6 +23,10 @@ func main() {
 	}
 	_ = godotenv.Load() // fallback: cwd
 
+	// Assign after godotenv so the env var is actually populated.
+	// Package-level var init in app.go runs before main(), before godotenv loads.
+	twitchClientSecret = os.Getenv("TWITCH_AISSISTME_SECRET_KEY")
+
 	app := NewApp()
 
 	err := wails.Run(&options.App{
