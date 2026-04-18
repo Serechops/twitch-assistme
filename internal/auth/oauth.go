@@ -113,10 +113,10 @@ func ListenForCallback(ctx context.Context, expectedState string) (string, error
 }
 
 // ExchangeCode exchanges an authorization code for tokens using PKCE.
-func ExchangeCode(clientID, clientSecret, code, codeVerifier string) (*TokenResponse, error) {
+// No client_secret is required — this app uses the public client PKCE flow.
+func ExchangeCode(clientID, code, codeVerifier string) (*TokenResponse, error) {
 	form := url.Values{}
 	form.Set("client_id", clientID)
-	form.Set("client_secret", clientSecret)
 	form.Set("code", code)
 	form.Set("code_verifier", codeVerifier)
 	form.Set("grant_type", "authorization_code")
@@ -141,10 +141,9 @@ func ExchangeCode(clientID, clientSecret, code, codeVerifier string) (*TokenResp
 }
 
 // RefreshAccessToken exchanges a refresh token for a new access token.
-func RefreshAccessToken(clientID, clientSecret, refreshToken string) (*TokenResponse, error) {
+func RefreshAccessToken(clientID, refreshToken string) (*TokenResponse, error) {
 	form := url.Values{}
 	form.Set("client_id", clientID)
-	form.Set("client_secret", clientSecret)
 	form.Set("refresh_token", refreshToken)
 	form.Set("grant_type", "refresh_token")
 

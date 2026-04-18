@@ -16,24 +16,23 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
+// twitchClientID is the public Twitch application client ID.
+// This is safe to embed in open-source builds \u2014 it identifies the app, not a user.
+// The app uses the PKCE public-client flow, so no client secret is required.
+const twitchClientID = "qclbf55wgzujy2rnsqqc88dv3re3yp"
+
 // App is the main application struct bound to the Wails frontend.
 type App struct {
 	ctx      context.Context
 	database *db.DB
 
-	clientID     string
-	clientSecret string
-
 	eventSubClient *twitch.EventSubClient
 	eventSubCancel context.CancelFunc
 }
 
-// NewApp creates the App with Twitch credentials loaded from env.
+// NewApp creates a new App instance.
 func NewApp() *App {
-	return &App{
-		clientID:     os.Getenv("TWITCH_AISSISTME_CLIENT_ID"),
-		clientSecret: os.Getenv("TWITCH_AISSISTME_SECRET_KEY"),
-	}
+	return &App{}
 }
 
 func (a *App) startup(ctx context.Context) {
@@ -84,7 +83,7 @@ func (a *App) Login() error {
 		return fmt.Errorf("login: generate state: %w", err)
 	}
 
-	authURL := auth.BuildAuthURL(a.clientID, state, challenge)
+	authURL := auth.BuildAuthURL(twitchClientID, state, challenge)
 	runtime.BrowserOpenURL(a.ctx, authURL)
 
 	code, err := auth.ListenForCallback(a.ctx, state)
@@ -92,12 +91,12 @@ func (a *App) Login() error {
 		return fmt.Errorf("login: callback: %w", err)
 	}
 
-	tokens, err := auth.ExchangeCode(a.clientID, a.clientSecret, code, verifier)
+	tokens, err := auth.ExchangeCode(twitchClientID, code, verifier)
 	if err != nil {
 		return fmt.Errorf("login: exchange code: %w", err)
 	}
 
-	user, err := twitch.GetCurrentUser(a.clientID, tokens.AccessToken)
+	user, err := twitch.GetCurrentUser(twitchClientID, tokens.AccessToken)
 	if err != nil {
 		return fmt.Errorf("login: get user: %w", err)
 	}
@@ -172,7 +171,7 @@ func (a *App) tryRefreshToken() {
 		return
 	}
 
-	tokens, err := auth.RefreshAccessToken(a.clientID, a.clientSecret, row.RefreshToken)
+	tokens, err := auth.RefreshAccessToken(twitchClientID, row.RefreshToken)
 	if err != nil {
 		runtime.LogWarningf(a.ctx, "Token refresh failed: %v", err)
 		return
@@ -206,7 +205,7 @@ func (a *App) ConnectEventSub() error {
 	cooldownStr, _ := a.database.GetSetting("chat_filter_cooldown_ms")
 	cooldownMs, _ := strconv.ParseInt(cooldownStr, 10, 64)
 
-	client := twitch.NewEventSubClient(a.clientID, row.AccessToken, row.UserID, row.UserID)
+	client := twitch.NewEventSubClient(twitchClientID, row.AccessToken, row.UserID, row.UserID)
 	client.IgnoreOwnMessages = ignoreOwn == "true"
 	client.CooldownMs = cooldownMs
 
