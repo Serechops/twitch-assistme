@@ -16,11 +16,12 @@ import (
 var assets embed.FS
 
 func main() {
-	// Load .env — try executable directory first, then cwd (covers both wails dev and production)
+	// Load .env if present — only needed for optional TWITCH_AISSISTME_SECRET_KEY.
+	// End users do not need a .env file; the app works out of the box via Device Code Flow.
 	if ex, err := os.Executable(); err == nil {
 		_ = godotenv.Load(filepath.Join(filepath.Dir(ex), ".env"))
 	}
-	_ = godotenv.Load() // fallback: cwd (useful when running go run .)
+	_ = godotenv.Load() // fallback: cwd
 
 	app := NewApp()
 

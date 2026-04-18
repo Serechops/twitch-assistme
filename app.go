@@ -16,12 +16,14 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
-// twitchClientID is the Twitch application client ID, loaded from TWITCH_AISSISTME_CLIENT_ID env var.
-var twitchClientID = os.Getenv("TWITCH_AISSISTME_CLIENT_ID")
+// twitchClientID is the public Twitch application client ID.
+// Safe to embed in distributed binaries — it identifies the app, not a user.
+const twitchClientID = "qclbf55wgzujy2rnsqqc88dv3re3yp"
 
-// twitchClientSecret enables the Authorization Code flow (confidential client).
-// Loaded from TWITCH_AISSISTME_SECRET_KEY env var.
-// Leave unset to fall back to the Device Code Grant Flow (no secret required).
+// twitchClientSecret is optional. When set, enables the smoother Authorization
+// Code flow. When empty (default), the app uses Device Code Grant Flow which
+// works out of the box with no setup required for end users.
+// Set via TWITCH_AISSISTME_SECRET_KEY in a .env file (never distribute this).
 var twitchClientSecret = os.Getenv("TWITCH_AISSISTME_SECRET_KEY")
 
 const (
