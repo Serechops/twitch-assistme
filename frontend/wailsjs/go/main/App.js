@@ -42,12 +42,20 @@ export function Logout() {
   return window['go']['main']['App']['Logout']();
 }
 
+export function PollLogin() {
+  return window['go']['main']['App']['PollLogin']();
+}
+
 export function SaveCustomSound(arg1, arg2) {
   return window['go']['main']['App']['SaveCustomSound'](arg1, arg2);
 }
 
 export function SaveSettings(arg1) {
   return window['go']['main']['App']['SaveSettings'](arg1);
+}
+
+export function StartLogin() {
+  return window['go']['main']['App']['StartLogin']();
 }
 
 export function TestSound() {

@@ -22,8 +22,12 @@ export function Login():Promise<void>;
 
 export function Logout():Promise<void>;
 
+export function PollLogin():Promise<void>;
+
 export function SaveCustomSound(arg1:string,arg2:string):Promise<void>;
 
 export function SaveSettings(arg1:main.SettingsDTO):Promise<void>;
+
+export function StartLogin():Promise<string>;
 
 export function TestSound():Promise<void>;

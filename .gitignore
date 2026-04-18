@@ -6,6 +6,7 @@ frontend/dist
 .env
 .env.local
 build/bin/.env
+secrets.go
 
 # go-winres extracted output (not needed in source control)
 winres/#3_0000.ico
