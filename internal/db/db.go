@@ -166,9 +166,23 @@ func (d *DB) SaveAuth(a AuthRow) error {
 	return err
 }
 
-// ClearAuth removes the auth row.
+// ClearAuth removes the auth row entirely.
 func (d *DB) ClearAuth() error {
 	_, err := d.conn.Exec(`DELETE FROM auth WHERE id = 1`)
+	return err
+}
+
+// ClearAuthKeepRefresh clears user and token data but preserves the refresh
+// token so the app can silently re-authenticate on the next login without
+// requiring the user to go through Device Code Flow again.
+func (d *DB) ClearAuthKeepRefresh() error {
+	_, err := d.conn.Exec(
+		`UPDATE auth SET
+		   access_token='', expires_at=0,
+		   user_id='', user_login='', user_display_name='',
+		   profile_image_url='', offline_image_url=''
+		 WHERE id = 1`,
+	)
 	return err
 }
 

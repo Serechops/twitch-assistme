@@ -65,8 +65,21 @@ func (a *App) domReady(ctx context.Context) {
 	}
 
 	row, err := a.database.GetAuth()
-	if err != nil || row == nil || row.UserID == "" {
-		return // no saved session — login screen is already shown
+	if err != nil || row == nil || (row.UserID == "" && row.RefreshToken == "") {
+		return // nothing stored — show login screen
+	}
+
+	// If the user explicitly logged out but we still have a refresh token,
+	// silently restore the session on the next app launch.
+	if row.UserID == "" && row.RefreshToken != "" {
+		tokens, rerr := auth.RefreshAccessToken(twitchClientID, twitchClientSecret, row.RefreshToken)
+		if rerr != nil {
+			runtime.LogWarningf(a.ctx, "Startup silent re-auth failed: %v", rerr)
+			_ = a.database.ClearAuth()
+			return
+		}
+		_ = a.finishLogin(tokens) // emits auth:changed + connects EventSub
+		return
 	}
 
 	// If the access token has expired (or is within 60 s of expiry), refresh it.
@@ -172,6 +185,18 @@ var pendingDeviceLogin *DeviceLoginState
 //
 // After calling StartLogin, call PollLogin to wait for completion.
 func (a *App) StartLogin() (string, error) {
+	// Try silent re-authentication first using any stored refresh token.
+	// This avoids Device Code Flow when the user has already authorized the app.
+	if a.database != nil {
+		if row, err := a.database.GetAuth(); err == nil && row != nil && row.RefreshToken != "" {
+			if tokens, rerr := auth.RefreshAccessToken(twitchClientID, twitchClientSecret, row.RefreshToken); rerr == nil {
+				return "", a.finishLogin(tokens)
+			}
+			// Token was revoked — clear it and fall through to interactive flow.
+			_ = a.database.ClearAuth()
+		}
+	}
+
 	if twitchClientSecret != "" {
 		return "", a.loginAuthCode()
 	}
@@ -253,14 +278,16 @@ func (a *App) finishLogin(tokens *auth.TokenResponse) error {
 	return nil
 }
 
-// Logout clears auth, disconnects EventSub, and emits auth:changed.
+// Logout disconnects EventSub and clears user/session data.
+// The refresh token is intentionally preserved so the next login can silently
+// re-authenticate without requiring Device Code Flow again.
 func (a *App) Logout() error {
 	if a.eventSubCancel != nil {
 		a.eventSubCancel()
 		a.eventSubCancel = nil
 		a.eventSubClient = nil
 	}
-	if err := a.database.ClearAuth(); err != nil {
+	if err := a.database.ClearAuthKeepRefresh(); err != nil {
 		return err
 	}
 	runtime.EventsEmit(a.ctx, "auth:changed", nil)
