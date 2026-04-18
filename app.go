@@ -54,9 +54,55 @@ func (a *App) startup(ctx context.Context) {
 		return
 	}
 	a.database = d
+}
 
-	// Attempt silent token refresh on startup.
-	a.tryRefreshToken()
+// domReady is called once the frontend DOM is ready to receive events.
+// It restores the previous session (refreshing the token if needed) and
+// auto-connects EventSub so the user never has to log in or click Connect again.
+func (a *App) domReady(ctx context.Context) {
+	if a.database == nil {
+		return
+	}
+
+	row, err := a.database.GetAuth()
+	if err != nil || row == nil || row.UserID == "" {
+		return // no saved session — login screen is already shown
+	}
+
+	// If the access token has expired (or is within 60 s of expiry), refresh it.
+	if time.Now().Unix() >= row.ExpiresAt-60 {
+		if row.RefreshToken == "" {
+			// Cannot refresh — force re-login.
+			_ = a.database.ClearAuth()
+			runtime.EventsEmit(a.ctx, "auth:changed", nil)
+			return
+		}
+		tokens, rerr := auth.RefreshAccessToken(twitchClientID, twitchClientSecret, row.RefreshToken)
+		if rerr != nil {
+			runtime.LogWarningf(a.ctx, "Startup token refresh failed: %v", rerr)
+			_ = a.database.ClearAuth()
+			runtime.EventsEmit(a.ctx, "auth:changed", nil)
+			return
+		}
+		row.AccessToken = tokens.AccessToken
+		row.RefreshToken = tokens.RefreshToken
+		row.ExpiresAt = time.Now().Unix() + int64(tokens.ExpiresIn)
+		_ = a.database.SaveAuth(*row)
+	}
+
+	// Emit auth:changed so the frontend is in sync with the persisted session.
+	runtime.EventsEmit(a.ctx, "auth:changed", &UserInfo{
+		ID:              row.UserID,
+		Login:           row.UserLogin,
+		DisplayName:     row.UserDisplayName,
+		ProfileImageURL: row.ProfileImageURL,
+		OfflineImageURL: row.OfflineImageURL,
+	})
+
+	// Auto-reconnect EventSub — user should never have to click Connect manually.
+	if err := a.ConnectEventSub(); err != nil {
+		runtime.LogWarningf(a.ctx, "Auto-connect EventSub on startup failed: %v", err)
+	}
 }
 
 func (a *App) shutdown(ctx context.Context) {
@@ -199,6 +245,11 @@ func (a *App) finishLogin(tokens *auth.TokenResponse) error {
 	}
 
 	runtime.EventsEmit(a.ctx, "auth:changed", a.buildUserInfo(row, user.ProfileImageURL, user.OfflineImageURL))
+
+	// Auto-connect EventSub immediately after login.
+	if err := a.ConnectEventSub(); err != nil {
+		runtime.LogWarningf(a.ctx, "Auto-connect EventSub after login failed: %v", err)
+	}
 	return nil
 }
 
@@ -219,6 +270,9 @@ func (a *App) Logout() error {
 
 // GetUser returns the stored user info, or nil if not authenticated.
 func (a *App) GetUser() *UserInfo {
+	if a.database == nil {
+		return nil
+	}
 	row, err := a.database.GetAuth()
 	if err != nil || row == nil || row.UserID == "" {
 		return nil
@@ -244,31 +298,6 @@ func (a *App) buildUserInfo(row db.AuthRow, profileImageURL, offlineImageURL str
 		DisplayName:     row.UserDisplayName,
 		ProfileImageURL: profileImageURL,
 		OfflineImageURL: offlineImageURL,
-	}
-}
-
-func (a *App) tryRefreshToken() {
-	row, err := a.database.GetAuth()
-	if err != nil || row == nil || row.RefreshToken == "" {
-		return
-	}
-
-	// Only refresh if within 30 minutes of expiry or already expired.
-	if time.Now().Unix() < row.ExpiresAt-1800 {
-		return
-	}
-
-	tokens, err := auth.RefreshAccessToken(twitchClientID, twitchClientSecret, row.RefreshToken)
-	if err != nil {
-		runtime.LogWarningf(a.ctx, "Token refresh failed: %v", err)
-		return
-	}
-
-	row.AccessToken = tokens.AccessToken
-	row.RefreshToken = tokens.RefreshToken
-	row.ExpiresAt = time.Now().Unix() + int64(tokens.ExpiresIn)
-	if err := a.database.SaveAuth(*row); err != nil {
-		runtime.LogWarningf(a.ctx, "Save refreshed token failed: %v", err)
 	}
 }
 
