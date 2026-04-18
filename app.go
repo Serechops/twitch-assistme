@@ -18,7 +18,7 @@ import (
 
 // twitchClientID is the public Twitch application client ID.
 // Safe to embed in distributed binaries — it identifies the app, not a user.
-const twitchClientID = "qclbf55wgzujy2rnsqqc88dv3re3yp"
+const twitchClientID = "g38s8mgmpbzg3b70cvlhagmue6l8v5"
 
 // twitchClientSecret is optional. When set, enables the smoother Authorization
 // Code flow. When empty (default), the app uses Device Code Grant Flow which
