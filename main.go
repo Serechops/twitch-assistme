@@ -2,6 +2,8 @@ package main
 
 import (
 	"embed"
+	"os"
+	"path/filepath"
 
 	"github.com/joho/godotenv"
 	"github.com/wailsapp/wails/v2"
@@ -14,8 +16,11 @@ import (
 var assets embed.FS
 
 func main() {
-	// Load .env file if present (ignored if missing — env vars may be set externally)
-	_ = godotenv.Load()
+	// Load .env — try executable directory first, then cwd (covers both wails dev and production)
+	if ex, err := os.Executable(); err == nil {
+		_ = godotenv.Load(filepath.Join(filepath.Dir(ex), ".env"))
+	}
+	_ = godotenv.Load() // fallback: cwd (useful when running go run .)
 
 	app := NewApp()
 
