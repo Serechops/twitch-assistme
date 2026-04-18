@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { GetSettings, SaveSettings, SaveCustomSound, ClearCustomSound, GetSoundDataBase64, TestSound, GetUser } from '../../wailsjs/go/main/App'
 import { EventsOn } from '../../wailsjs/runtime/runtime'
+import twitchBanner from '../assets/images/twitch_banner.jpg'
 
 export default function Settings() {
   const [s, setS] = useState(null)
@@ -90,7 +91,7 @@ export default function Settings() {
         <div className="account-card">
           <div
             className="account-card-banner"
-            style={user.offlineImageUrl ? { backgroundImage: `url(${user.offlineImageUrl})` } : {}}
+            style={{ backgroundImage: `url(${twitchBanner})` }}
           />
           <div className="account-card-body">
             {user.profileImageUrl
