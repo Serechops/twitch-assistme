@@ -5,6 +5,7 @@ import { EventsOn } from '../wailsjs/runtime/runtime'
 import Dashboard from './pages/Dashboard'
 import Settings from './pages/Settings'
 import useChatNotification from './hooks/useChatNotification'
+import appLogo from './assets/images/twitch_assistme.png'
 
 export default function App() {
   const [user, setUser] = useState(null)
@@ -21,8 +22,7 @@ export default function App() {
     <div className="app-shell">
       <nav className="sidebar">
         <div className="sidebar-logo">
-          <span className="logo-icon">🎮</span>
-          <span className="logo-text">Twitch AssistMe</span>
+          <img src={appLogo} alt="Twitch AssistMe" className="logo-img" />
         </div>
 
         <div className="sidebar-links">

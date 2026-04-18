@@ -4,3 +4,9 @@ frontend/dist
 
 # Environment / secrets
 .env
+
+# go-winres extracted output (not needed in source control)
+winres/#3_0000.ico
+winres/icon.ico
+winres/icon.png
+winres/icon16.png

@@ -49,13 +49,18 @@ html, body, #root {
 .sidebar-logo {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 0 18px 20px;
+  padding: 0 14px 20px;
   border-bottom: 1px solid var(--border);
   margin-bottom: 12px;
 }
-.logo-icon { font-size: 22px; }
-.logo-text  { font-size: 15px; font-weight: 700; color: var(--accent); }
+.logo-img {
+  width: 140px;
+  height: auto;
+  display: block;
+  margin: 0 auto;
+  user-select: none;
+  -webkit-user-drag: none;
+}
 
 .sidebar-links {
   display: flex;

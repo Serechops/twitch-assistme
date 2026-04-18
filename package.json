@@ -1,0 +1,13 @@
+{
+  "name": "twitch-assistme",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Twitch AssistMe — desktop tools for Twitch streamers",
+  "scripts": {
+    "dev": "wails dev",
+    "build": "wails build",
+    "build:clean": "wails build -clean",
+    "build:debug": "wails build -debug",
+    "preview": "build\\bin\\twitch-assistme.exe"
+  }
+}
