@@ -381,7 +381,7 @@ input[type="range"] { flex: 1; accent-color: var(--accent); cursor: pointer; }
   margin-bottom: 20px;
 }
 .account-card-banner {
-  height: 96px;
+  height: 160px;
   background: var(--accent-dim);
   background-size: cover;
   background-position: center;
