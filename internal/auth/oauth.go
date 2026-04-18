@@ -18,8 +18,8 @@ const (
 	twitchAuthorizeURL = "https://id.twitch.tv/oauth2/authorize"
 	twitchTokenURL     = "https://id.twitch.tv/oauth2/token"
 	twitchValidateURL  = "https://id.twitch.tv/oauth2/validate"
-	redirectPort       = "3000"
-	redirectURI        = "http://localhost:3000"
+	redirectPort       = "3333"
+	redirectURI        = "http://localhost:3333"
 )
 
 // TokenResponse holds the Twitch OAuth token response fields we care about.
@@ -52,7 +52,7 @@ func GenerateState() (string, error) {
 	return base64.RawURLEncoding.EncodeToString(b), nil
 }
 
-// ListenForCallback starts a one-shot HTTP server on localhost:3000 that
+// ListenForCallback starts a one-shot HTTP server on localhost:3333 that
 // captures the OAuth callback code. It returns the authorization code or an error.
 func ListenForCallback(ctx context.Context, expectedState string) (string, error) {
 	codeCh := make(chan string, 1)

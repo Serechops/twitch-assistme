@@ -19,7 +19,7 @@ import (
 // twitchClientID is the public Twitch application client ID.
 // This is safe to embed in open-source builds \u2014 it identifies the app, not a user.
 // The app uses the PKCE public-client flow, so no client secret is required.
-const twitchClientID = "qclbf55wgzujy2rnsqqc88dv3re3yp"
+const twitchClientID = "lfgqt0yv53k3bdup7qcprnvdlhqvym"
 
 // App is the main application struct bound to the Wails frontend.
 type App struct {
