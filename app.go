@@ -59,27 +59,20 @@ func (a *App) startup(ctx context.Context) {
 // domReady is called once the frontend DOM is ready to receive events.
 // It restores the previous session (refreshing the token if needed) and
 // auto-connects EventSub so the user never has to log in or click Connect again.
+//
+// NOTE: domReady only restores sessions where the user was still logged in
+// (UserID != ""). If the user explicitly logged out, we show the login screen
+// and let StartLogin handle silent re-authentication — this avoids a race
+// condition where both domReady and StartLogin consume the one-time-use
+// DCF refresh token simultaneously.
 func (a *App) domReady(ctx context.Context) {
 	if a.database == nil {
 		return
 	}
 
 	row, err := a.database.GetAuth()
-	if err != nil || row == nil || (row.UserID == "" && row.RefreshToken == "") {
-		return // nothing stored — show login screen
-	}
-
-	// If the user explicitly logged out but we still have a refresh token,
-	// silently restore the session on the next app launch.
-	if row.UserID == "" && row.RefreshToken != "" {
-		tokens, rerr := auth.RefreshAccessToken(twitchClientID, twitchClientSecret, row.RefreshToken)
-		if rerr != nil {
-			runtime.LogWarningf(a.ctx, "Startup silent re-auth failed: %v", rerr)
-			_ = a.database.ClearAuth()
-			return
-		}
-		_ = a.finishLogin(tokens) // emits auth:changed + connects EventSub
-		return
+	if err != nil || row == nil || row.UserID == "" {
+		return // no active session — show login screen
 	}
 
 	// If the access token has expired (or is within 60 s of expiry), refresh it.
@@ -98,7 +91,11 @@ func (a *App) domReady(ctx context.Context) {
 			return
 		}
 		row.AccessToken = tokens.AccessToken
-		row.RefreshToken = tokens.RefreshToken
+		// DCF refresh tokens are one-time use — Twitch returns a new one each time.
+		// Preserve the existing token if the response somehow omits it.
+		if tokens.RefreshToken != "" {
+			row.RefreshToken = tokens.RefreshToken
+		}
 		row.ExpiresAt = time.Now().Unix() + int64(tokens.ExpiresIn)
 		_ = a.database.SaveAuth(*row)
 	}
@@ -189,11 +186,14 @@ func (a *App) StartLogin() (string, error) {
 	// This avoids Device Code Flow when the user has already authorized the app.
 	if a.database != nil {
 		if row, err := a.database.GetAuth(); err == nil && row != nil && row.RefreshToken != "" {
-			if tokens, rerr := auth.RefreshAccessToken(twitchClientID, twitchClientSecret, row.RefreshToken); rerr == nil {
+			tokens, rerr := auth.RefreshAccessToken(twitchClientID, twitchClientSecret, row.RefreshToken)
+			if rerr != nil {
+				// Log the reason so it's visible in wails dev console.
+				runtime.LogWarningf(a.ctx, "Silent re-auth failed (%v) — falling back to interactive flow", rerr)
+				_ = a.database.ClearAuth()
+			} else {
 				return "", a.finishLogin(tokens)
 			}
-			// Token was revoked — clear it and fall through to interactive flow.
-			_ = a.database.ClearAuth()
 		}
 	}
 
@@ -254,9 +254,19 @@ func (a *App) finishLogin(tokens *auth.TokenResponse) error {
 		return fmt.Errorf("login: get user: %w", err)
 	}
 
+	// DCF refresh tokens are one-time use. If the token exchange response omits
+	// the new refresh token (shouldn't happen, but be defensive), preserve the
+	// existing one so the next login can still silently re-authenticate.
+	refreshToken := tokens.RefreshToken
+	if refreshToken == "" {
+		if existing, gerr := a.database.GetAuth(); gerr == nil && existing != nil {
+			refreshToken = existing.RefreshToken
+		}
+	}
+
 	row := db.AuthRow{
 		AccessToken:     tokens.AccessToken,
-		RefreshToken:    tokens.RefreshToken,
+		RefreshToken:    refreshToken,
 		ExpiresAt:       time.Now().Unix() + int64(tokens.ExpiresIn),
 		UserID:          user.ID,
 		UserLogin:       user.Login,
