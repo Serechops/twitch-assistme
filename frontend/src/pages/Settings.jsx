@@ -20,6 +20,7 @@ export default function Settings() {
     setBusy(true)
     try {
       await SaveSettings(s)
+      window.dispatchEvent(new CustomEvent('settings:changed'))
       showNotice('success', 'Settings saved.')
     } catch (e) {
       showNotice('error', String(e))
@@ -47,6 +48,7 @@ export default function Settings() {
       const b64 = btoa(binary)
       await SaveCustomSound(b64, file.name)
       setCustomFileName(file.name)
+      window.dispatchEvent(new CustomEvent('settings:changed'))
       showNotice('success', 'Custom sound saved.')
     } catch (err) {
       showNotice('error', String(err))

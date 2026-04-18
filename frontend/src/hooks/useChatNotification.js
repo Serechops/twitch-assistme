@@ -62,6 +62,9 @@ export default function useChatNotification() {
     }
 
     loadSettings()
+
+    window.addEventListener('settings:changed', loadSettings)
+    return () => window.removeEventListener('settings:changed', loadSettings)
   }, [])
 
   useEffect(() => {

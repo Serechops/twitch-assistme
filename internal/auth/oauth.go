@@ -166,4 +166,3 @@ func ValidateToken(accessToken string) (userID, userLogin string, err error) {
 	}
 	return v.UserID, v.Login, nil
 }
-
