@@ -16,6 +16,7 @@ type UserInfo struct {
 	Login           string `json:"login"`
 	DisplayName     string `json:"display_name"`
 	ProfileImageURL string `json:"profile_image_url"`
+	OfflineImageURL string `json:"offline_image_url"`
 }
 
 // GetCurrentUser fetches the authenticated user's profile from Helix.

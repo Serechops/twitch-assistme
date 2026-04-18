@@ -68,6 +68,24 @@ export default function useChatNotification() {
   }, [])
 
   useEffect(() => {
+    function playAtVolume(volume) {
+      if (customAudioRef.current && audioCtxRef.current) {
+        try {
+          const source = audioCtxRef.current.createBufferSource()
+          source.buffer = customAudioRef.current
+          const gain = audioCtxRef.current.createGain()
+          gain.gain.value = volume
+          source.connect(gain)
+          gain.connect(audioCtxRef.current.destination)
+          source.start()
+        } catch (_) {
+          playDefaultChime(volume)
+        }
+      } else {
+        playDefaultChime(volume)
+      }
+    }
+
     const off = EventsOn('chat:message', () => {
       const { soundEnabled, soundVolume } = settingsRef.current
       if (!soundEnabled) return
@@ -76,22 +94,17 @@ export default function useChatNotification() {
       if (now - lastPlayedRef.current < cooldownRef.current) return
       lastPlayedRef.current = now
 
-      if (customAudioRef.current && audioCtxRef.current) {
-        try {
-          const source = audioCtxRef.current.createBufferSource()
-          source.buffer = customAudioRef.current
-          const gain = audioCtxRef.current.createGain()
-          gain.gain.value = soundVolume
-          source.connect(gain)
-          gain.connect(audioCtxRef.current.destination)
-          source.start()
-        } catch (_) {
-          playDefaultChime(soundVolume)
-        }
-      } else {
-        playDefaultChime(soundVolume)
-      }
+      playAtVolume(soundVolume)
     })
-    return () => off()
+
+    function handleTestSound(e) {
+      playAtVolume(e.detail?.volume ?? settingsRef.current.soundVolume)
+    }
+    window.addEventListener('sound:test', handleTestSound)
+
+    return () => {
+      off()
+      window.removeEventListener('sound:test', handleTestSound)
+    }
   }, [])
 }

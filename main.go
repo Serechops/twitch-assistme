@@ -16,7 +16,7 @@ func main() {
 	app := NewApp()
 
 	err := wails.Run(&options.App{
-		Title:     "AI-SSISTME",
+		Title:     "Twitch AssistMe",
 		Width:     1100,
 		Height:    720,
 		MinWidth:  800,

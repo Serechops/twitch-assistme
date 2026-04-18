@@ -58,6 +58,8 @@ func (d *DB) migrate() error {
 			user_id           TEXT    NOT NULL DEFAULT '',
 			user_login        TEXT    NOT NULL DEFAULT '',
 			user_display_name TEXT    NOT NULL DEFAULT '',
+			profile_image_url TEXT    NOT NULL DEFAULT '',
+			offline_image_url TEXT    NOT NULL DEFAULT '',
 			created_at        INTEGER NOT NULL DEFAULT 0
 		)`,
 		`CREATE TABLE IF NOT EXISTS settings (
@@ -94,7 +96,18 @@ func (d *DB) migrate() error {
 		}
 	}
 
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+
+	// Idempotent column additions for existing databases.
+	for _, col := range []string{
+		`ALTER TABLE auth ADD COLUMN profile_image_url TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE auth ADD COLUMN offline_image_url TEXT NOT NULL DEFAULT ''`,
+	} {
+		d.conn.Exec(col) // ignore error — column may already exist
+	}
+	return nil
 }
 
 // AuthRow holds the single auth record.
@@ -105,18 +118,22 @@ type AuthRow struct {
 	UserID          string
 	UserLogin       string
 	UserDisplayName string
+	ProfileImageURL string
+	OfflineImageURL string
 	CreatedAt       int64
 }
 
 // GetAuth returns the stored auth row, or nil if none exists.
 func (d *DB) GetAuth() (*AuthRow, error) {
 	row := d.conn.QueryRow(
-		`SELECT access_token, refresh_token, expires_at, user_id, user_login, user_display_name, created_at
+		`SELECT access_token, refresh_token, expires_at, user_id, user_login, user_display_name,
+		        profile_image_url, offline_image_url, created_at
 		 FROM auth WHERE id = 1`,
 	)
 	a := &AuthRow{}
 	err := row.Scan(&a.AccessToken, &a.RefreshToken, &a.ExpiresAt,
-		&a.UserID, &a.UserLogin, &a.UserDisplayName, &a.CreatedAt)
+		&a.UserID, &a.UserLogin, &a.UserDisplayName,
+		&a.ProfileImageURL, &a.OfflineImageURL, &a.CreatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -129,8 +146,9 @@ func (d *DB) GetAuth() (*AuthRow, error) {
 // SaveAuth upserts the auth row.
 func (d *DB) SaveAuth(a AuthRow) error {
 	_, err := d.conn.Exec(
-		`INSERT INTO auth (id, access_token, refresh_token, expires_at, user_id, user_login, user_display_name, created_at)
-		 VALUES (1, ?, ?, ?, ?, ?, ?, ?)
+		`INSERT INTO auth (id, access_token, refresh_token, expires_at, user_id, user_login, user_display_name,
+		                   profile_image_url, offline_image_url, created_at)
+		 VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(id) DO UPDATE SET
 		   access_token=excluded.access_token,
 		   refresh_token=excluded.refresh_token,
@@ -138,9 +156,12 @@ func (d *DB) SaveAuth(a AuthRow) error {
 		   user_id=excluded.user_id,
 		   user_login=excluded.user_login,
 		   user_display_name=excluded.user_display_name,
+		   profile_image_url=excluded.profile_image_url,
+		   offline_image_url=excluded.offline_image_url,
 		   created_at=excluded.created_at`,
 		a.AccessToken, a.RefreshToken, a.ExpiresAt,
-		a.UserID, a.UserLogin, a.UserDisplayName, a.CreatedAt,
+		a.UserID, a.UserLogin, a.UserDisplayName,
+		a.ProfileImageURL, a.OfflineImageURL, a.CreatedAt,
 	)
 	return err
 }

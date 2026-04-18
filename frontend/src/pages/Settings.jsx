@@ -1,14 +1,19 @@
 import { useEffect, useState } from 'react'
-import { GetSettings, SaveSettings, SaveCustomSound, GetSoundDataBase64, TestSound } from '../../wailsjs/go/main/App'
+import { GetSettings, SaveSettings, SaveCustomSound, ClearCustomSound, GetSoundDataBase64, TestSound, GetUser } from '../../wailsjs/go/main/App'
+import { EventsOn } from '../../wailsjs/runtime/runtime'
 
 export default function Settings() {
   const [s, setS] = useState(null)
+  const [user, setUser] = useState(null)
   const [notice, setNotice] = useState(null)
   const [customFileName, setCustomFileName] = useState('')
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
     GetSettings().then(settings => setS(settings))
+    GetUser().then(u => setUser(u))
+    const off = EventsOn('auth:changed', u => setUser(u))
+    return () => off()
   }, [])
 
   function showNotice(type, msg) {
@@ -57,6 +62,21 @@ export default function Settings() {
     }
   }
 
+  async function handleClearSound() {
+    setBusy(true)
+    try {
+      await ClearCustomSound()
+      setCustomFileName('')
+      setS(prev => ({ ...prev, soundPath: '' }))
+      window.dispatchEvent(new CustomEvent('settings:changed'))
+      showNotice('success', 'Reverted to default chime.')
+    } catch (err) {
+      showNotice('error', String(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
   if (!s) return <div style={{ color: 'var(--text-muted)', padding: 24 }}>Loading settings…</div>
 
   return (
@@ -64,6 +84,28 @@ export default function Settings() {
       <h1 className="page-title">Settings</h1>
 
       {notice && <div className={`notice ${notice.type}`}>{notice.msg}</div>}
+
+      {/* Account card */}
+      {user && (
+        <div className="account-card">
+          <div
+            className="account-card-banner"
+            style={user.offlineImageUrl ? { backgroundImage: `url(${user.offlineImageUrl})` } : {}}
+          />
+          <div className="account-card-body">
+            {user.profileImageUrl
+              ? <img className="account-card-avatar" src={user.profileImageUrl} alt={user.displayName} />
+              : <div className="account-card-avatar account-card-avatar--fallback">
+                  {user.displayName?.charAt(0).toUpperCase()}
+                </div>
+            }
+            <div className="account-card-info">
+              <div className="account-card-name">{user.displayName}</div>
+              <div className="account-card-login">@{user.login}</div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Notification Sound */}
       <div className="card">
@@ -116,9 +158,15 @@ export default function Settings() {
           </div>
 
           <div style={{ display: 'flex', gap: 10 }}>
-            <button className="btn btn-secondary btn-sm" onClick={() => TestSound()} disabled={!s.soundEnabled}>
+            <button className="btn btn-secondary btn-sm"
+              onClick={() => window.dispatchEvent(new CustomEvent('sound:test', { detail: { volume: s.soundVolume } }))}>
               Test sound
             </button>
+            {(customFileName || s.soundPath) && (
+              <button className="btn btn-danger btn-sm" onClick={handleClearSound} disabled={busy}>
+                Use default
+              </button>
+            )}
           </div>
 
         </div>

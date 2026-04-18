@@ -25,6 +25,7 @@ export namespace main {
 	    login: string;
 	    displayName: string;
 	    profileImageUrl: string;
+	    offlineImageUrl: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new UserInfo(source);
@@ -36,6 +37,7 @@ export namespace main {
 	        this.login = source["login"];
 	        this.displayName = source["displayName"];
 	        this.profileImageUrl = source["profileImageUrl"];
+	        this.offlineImageUrl = source["offlineImageUrl"];
 	    }
 	}
 

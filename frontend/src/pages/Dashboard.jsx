@@ -72,7 +72,7 @@ export default function Dashboard({ user, setUser }) {
   if (!user) {
     return (
       <div className="login-center">
-        <h2>Welcome to Twitch Streamer Tools</h2>
+        <h2>Welcome to Twitch AssistMe</h2>
         <p>Connect your Twitch account to start receiving chat notifications.</p>
         {loginError && <div className="notice error">{loginError}</div>}
         <button className="btn btn-primary" onClick={handleLogin} disabled={busy}>
@@ -90,10 +90,12 @@ export default function Dashboard({ user, setUser }) {
       <div className="card">
         <div className="card-title">Account</div>
         <div className="user-bar">
-          <div className="user-bar-avatar"
-               style={{ background: 'var(--accent-dim)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, color: 'var(--accent)' }}>
-            {user.displayName?.charAt(0).toUpperCase()}
-          </div>
+          {user.profileImageUrl
+            ? <img className="user-bar-avatar" src={user.profileImageUrl} alt={user.displayName} />
+            : <div className="user-bar-avatar user-bar-avatar--fallback">
+                {user.displayName?.charAt(0).toUpperCase()}
+              </div>
+          }
           <div>
             <div className="user-bar-name">{user.displayName}</div>
             <div className="user-bar-login">@{user.login}</div>

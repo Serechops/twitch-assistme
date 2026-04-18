@@ -17,9 +17,25 @@ import (
 )
 
 // twitchClientID is the public Twitch application client ID.
-// This is safe to embed in open-source builds \u2014 it identifies the app, not a user.
-// The app uses the PKCE public-client flow, so no client secret is required.
-const twitchClientID = "lfgqt0yv53k3bdup7qcprnvdlhqvym"
+// Safe to embed in open-source builds — it identifies the app, not a user.
+const twitchClientID = "g38s8mgmpbzg3b70cvlhagmue6l8v5"
+
+// twitchClientSecret enables the Authorization Code flow (confidential client).
+//
+// HOW TO ENABLE the smoother OAuth experience:
+//  1. Go to https://dev.twitch.tv/console/apps and open your app.
+//  2. Change the OAuth client type to "Confidential".
+//  3. Copy the generated Client Secret and paste it below.
+//  4. Make sure http://localhost:3333 is listed as a redirect URI.
+//
+// Leave empty to fall back to the Device Code Grant Flow (no secret required,
+// but requires a browser "activate" step on every login).
+const twitchClientSecret = "REDACTED_SECRET"
+
+const (
+	twitchRedirectURI = "http://localhost:3333"
+	twitchScopes      = "user:read:chat"
+)
 
 // App is the main application struct bound to the Wails frontend.
 type App struct {
@@ -66,24 +82,57 @@ type UserInfo struct {
 	Login           string `json:"login"`
 	DisplayName     string `json:"displayName"`
 	ProfileImageURL string `json:"profileImageUrl"`
+	OfflineImageURL string `json:"offlineImageUrl"`
 }
 
-// Login starts the Twitch Device Code Grant Flow. Opens the browser to
-// the Twitch activation page and polls until the user authorizes the app.
+// Login starts the appropriate OAuth flow:
+//   - If twitchClientSecret is set, uses Authorization Code flow (browser authorize + localhost redirect).
+//   - Otherwise, falls back to Device Code Grant Flow (browser activation page).
 func (a *App) Login() error {
-	dfr, err := auth.StartDeviceFlow(twitchClientID, "user:read:chat")
+	if twitchClientSecret != "" {
+		return a.loginAuthCode()
+	}
+	return a.loginDeviceFlow()
+}
+
+func (a *App) loginAuthCode() error {
+	state, err := auth.GenerateState()
 	if err != nil {
 		return fmt.Errorf("login: %w", err)
 	}
 
-	// Open the verification URI — code is embedded so user just clicks Authorize.
+	authURL := auth.BuildAuthURL(twitchClientID, twitchRedirectURI, state, twitchScopes)
+	runtime.BrowserOpenURL(a.ctx, authURL)
+
+	code, err := auth.ListenForCallback(a.ctx, state, "3333")
+	if err != nil {
+		return fmt.Errorf("login: %w", err)
+	}
+
+	tokens, err := auth.ExchangeCode(twitchClientID, twitchClientSecret, twitchRedirectURI, code)
+	if err != nil {
+		return fmt.Errorf("login: %w", err)
+	}
+	return a.finishLogin(tokens)
+}
+
+func (a *App) loginDeviceFlow() error {
+	dfr, err := auth.StartDeviceFlow(twitchClientID, twitchScopes)
+	if err != nil {
+		return fmt.Errorf("login: %w", err)
+	}
+
+	// VerificationURI includes the device code, so the user just clicks Authorize.
 	runtime.BrowserOpenURL(a.ctx, dfr.VerificationURI)
 
 	tokens, err := auth.PollForToken(a.ctx, twitchClientID, dfr.DeviceCode, dfr.Interval)
 	if err != nil {
 		return fmt.Errorf("login: %w", err)
 	}
+	return a.finishLogin(tokens)
+}
 
+func (a *App) finishLogin(tokens *auth.TokenResponse) error {
 	user, err := twitch.GetCurrentUser(twitchClientID, tokens.AccessToken)
 	if err != nil {
 		return fmt.Errorf("login: get user: %w", err)
@@ -96,13 +145,15 @@ func (a *App) Login() error {
 		UserID:          user.ID,
 		UserLogin:       user.Login,
 		UserDisplayName: user.DisplayName,
+		ProfileImageURL: user.ProfileImageURL,
+		OfflineImageURL: user.OfflineImageURL,
 		CreatedAt:       time.Now().Unix(),
 	}
 	if err := a.database.SaveAuth(row); err != nil {
 		return fmt.Errorf("login: save auth: %w", err)
 	}
 
-	runtime.EventsEmit(a.ctx, "auth:changed", a.buildUserInfo(row, user.ProfileImageURL))
+	runtime.EventsEmit(a.ctx, "auth:changed", a.buildUserInfo(row, user.ProfileImageURL, user.OfflineImageURL))
 	return nil
 }
 
@@ -128,9 +179,11 @@ func (a *App) GetUser() *UserInfo {
 		return nil
 	}
 	return &UserInfo{
-		ID:          row.UserID,
-		Login:       row.UserLogin,
-		DisplayName: row.UserDisplayName,
+		ID:              row.UserID,
+		Login:           row.UserLogin,
+		DisplayName:     row.UserDisplayName,
+		ProfileImageURL: row.ProfileImageURL,
+		OfflineImageURL: row.OfflineImageURL,
 	}
 }
 
@@ -139,12 +192,13 @@ func (a *App) IsAuthenticated() bool {
 	return a.GetUser() != nil
 }
 
-func (a *App) buildUserInfo(row db.AuthRow, profileImageURL string) *UserInfo {
+func (a *App) buildUserInfo(row db.AuthRow, profileImageURL, offlineImageURL string) *UserInfo {
 	return &UserInfo{
 		ID:              row.UserID,
 		Login:           row.UserLogin,
 		DisplayName:     row.UserDisplayName,
 		ProfileImageURL: profileImageURL,
+		OfflineImageURL: offlineImageURL,
 	}
 }
 
@@ -159,7 +213,7 @@ func (a *App) tryRefreshToken() {
 		return
 	}
 
-	tokens, err := auth.RefreshAccessToken(twitchClientID, row.RefreshToken)
+	tokens, err := auth.RefreshAccessToken(twitchClientID, twitchClientSecret, row.RefreshToken)
 	if err != nil {
 		runtime.LogWarningf(a.ctx, "Token refresh failed: %v", err)
 		return
@@ -329,6 +383,15 @@ func (a *App) SaveCustomSound(base64Data, filename string) error {
 	}
 
 	return a.database.SaveSetting("chat_sound_path", savePath)
+}
+
+// ClearCustomSound removes the custom notification sound and reverts to the default.
+func (a *App) ClearCustomSound() error {
+	path, _ := a.database.GetSetting("chat_sound_path")
+	if path != "" {
+		os.Remove(path) // best-effort; ignore error if already gone
+	}
+	return a.database.SaveSetting("chat_sound_path", "")
 }
 
 // GetSoundDataBase64 returns the custom notification sound as a base64 string,

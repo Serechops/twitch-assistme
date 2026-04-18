@@ -115,10 +115,14 @@ func PollForToken(ctx context.Context, clientID, deviceCode string, intervalSecs
 }
 
 // RefreshAccessToken exchanges a refresh token for a new access token.
-// No client_secret required for public clients.
-func RefreshAccessToken(clientID, refreshToken string) (*TokenResponse, error) {
+// For confidential Twitch clients, clientSecret must be provided.
+// For public clients (DCF), pass an empty string.
+func RefreshAccessToken(clientID, clientSecret, refreshToken string) (*TokenResponse, error) {
 	form := url.Values{}
 	form.Set("client_id", clientID)
+	if clientSecret != "" {
+		form.Set("client_secret", clientSecret)
+	}
 	form.Set("refresh_token", refreshToken)
 	form.Set("grant_type", "refresh_token")
 

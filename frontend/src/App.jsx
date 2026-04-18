@@ -22,7 +22,7 @@ export default function App() {
       <nav className="sidebar">
         <div className="sidebar-logo">
           <span className="logo-icon">🎮</span>
-          <span className="logo-text">Streamer Tools</span>
+          <span className="logo-text">Twitch AssistMe</span>
         </div>
 
         <div className="sidebar-links">
@@ -36,6 +36,12 @@ export default function App() {
 
         {user && (
           <div className="sidebar-user">
+            {user.profileImageUrl
+              ? <img className="sidebar-user-avatar" src={user.profileImageUrl} alt={user.displayName} />
+              : <div className="sidebar-user-avatar sidebar-user-avatar--fallback">
+                  {user.displayName?.charAt(0).toUpperCase()}
+                </div>
+            }
             <div className="sidebar-user-name">@{user.login}</div>
           </div>
         )}
