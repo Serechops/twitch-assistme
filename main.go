@@ -2,10 +2,7 @@ package main
 
 import (
 	"embed"
-	"os"
-	"path/filepath"
 
-	"github.com/joho/godotenv"
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
@@ -16,16 +13,6 @@ import (
 var assets embed.FS
 
 func main() {
-	// Load .env if present — only needed for optional TWITCH_AISSISTME_SECRET_KEY.
-	// End users do not need a .env file; the app works out of the box via Device Code Flow.
-	if ex, err := os.Executable(); err == nil {
-		_ = godotenv.Load(filepath.Join(filepath.Dir(ex), ".env"))
-	}
-	_ = godotenv.Load() // fallback: cwd
-
-	// Assign after godotenv so the env var is actually populated.
-	// Package-level var init in app.go runs before main(), before godotenv loads.
-	twitchClientSecret = os.Getenv("TWITCH_AISSISTME_SECRET_KEY")
 
 	app := NewApp()
 

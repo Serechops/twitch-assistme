@@ -20,10 +20,9 @@ import (
 // Safe to embed in distributed binaries — it identifies the app, not a user.
 const twitchClientID = "g38s8mgmpbzg3b70cvlhagmue6l8v5"
 
-// twitchClientSecret is optional. When set (via TWITCH_AISSISTME_SECRET_KEY in .env),
-// enables the smoother Authorization Code flow. Assigned in main() after godotenv loads
-// so the env var is actually present — package-level os.Getenv runs before godotenv.
-var twitchClientSecret string
+// twitchClientSecret enables Authorization Code flow (confidential client).
+// Embedded at compile time — never committed to git.
+const twitchClientSecret = "REDACTED"
 
 const (
 	twitchRedirectURI = "http://localhost:3333"
