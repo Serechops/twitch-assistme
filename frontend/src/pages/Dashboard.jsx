@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Login, Logout, ConnectEventSub, DisconnectEventSub, GetConnectionStatus } from '../../wailsjs/go/main/App'
+import { Login, Logout, ConnectEventSub, DisconnectEventSub, GetConnectionStatus, StartLogin, PollLogin } from '../../wailsjs/go/main/App'
 import { EventsOn } from '../../wailsjs/runtime/runtime'
 import useConnectionStatus from '../hooks/useConnectionStatus'
 
@@ -10,6 +10,7 @@ export default function Dashboard({ user, setUser }) {
   const [messages, setMessages] = useState([])
   const [loginError, setLoginError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [deviceCode, setDeviceCode] = useState('')  // non-empty = waiting for device activation
   const feedRef = useRef(null)
 
   // Sync initial connection status
@@ -38,10 +39,20 @@ export default function Dashboard({ user, setUser }) {
   async function handleLogin() {
     setBusy(true)
     setLoginError('')
+    setDeviceCode('')
     try {
-      await Login()
+      const code = await StartLogin()
+      if (code) {
+        // Device Code flow — show the code, then poll in background
+        setDeviceCode(code)
+        setBusy(false)
+        await PollLogin()
+        setDeviceCode('')
+      }
+      // Auth Code flow returns empty string — browser already opened, done
     } catch (e) {
       setLoginError(String(e))
+      setDeviceCode('')
     } finally {
       setBusy(false)
     }
@@ -73,11 +84,22 @@ export default function Dashboard({ user, setUser }) {
     return (
       <div className="login-center">
         <h2>Welcome to Twitch AssistMe</h2>
-        <p>Connect your Twitch account to start receiving chat notifications.</p>
-        {loginError && <div className="notice error">{loginError}</div>}
-        <button className="btn btn-primary" onClick={handleLogin} disabled={busy}>
-          {busy ? 'Opening browser…' : 'Log in with Twitch'}
-        </button>
+        {deviceCode ? (
+          <>
+            <p>Your browser has been opened to <strong>twitch.tv/activate</strong>.</p>
+            <p>Enter this code to connect your account:</p>
+            <div className="device-code">{deviceCode}</div>
+            <p className="login-hint">Waiting for authorization…</p>
+          </>
+        ) : (
+          <>
+            <p>Connect your Twitch account to start receiving chat notifications.</p>
+            {loginError && <div className="notice error">{loginError}</div>}
+            <button className="btn btn-primary" onClick={handleLogin} disabled={busy}>
+              {busy ? 'Opening browser…' : 'Log in with Twitch'}
+            </button>
+          </>
+        )}
       </div>
     )
   }

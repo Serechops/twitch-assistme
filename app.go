@@ -110,13 +110,64 @@ func (a *App) loginAuthCode() error {
 	return a.finishLogin(tokens)
 }
 
+// DeviceLoginState holds pending device flow state between StartLogin and polling.
+type DeviceLoginState struct {
+	DeviceCode      string
+	UserCode        string
+	VerificationURI string
+	Interval        int
+}
+
+var pendingDeviceLogin *DeviceLoginState
+
+// StartLogin begins the auth flow:
+//   - Auth Code flow: opens browser immediately, returns empty string (no code needed).
+//   - Device Code flow: returns the user code to display, opens browser to activation page.
+//
+// After calling StartLogin, call PollLogin to wait for completion.
+func (a *App) StartLogin() (string, error) {
+	if twitchClientSecret != "" {
+		return "", a.loginAuthCode()
+	}
+
+	dfr, err := auth.StartDeviceFlow(twitchClientID, twitchScopes)
+	if err != nil {
+		return "", fmt.Errorf("login: %w", err)
+	}
+
+	pendingDeviceLogin = &DeviceLoginState{
+		DeviceCode:      dfr.DeviceCode,
+		UserCode:        dfr.UserCode,
+		VerificationURI: dfr.VerificationURI,
+		Interval:        dfr.Interval,
+	}
+
+	runtime.BrowserOpenURL(a.ctx, dfr.VerificationURI)
+	return dfr.UserCode, nil
+}
+
+// PollLogin waits for the pending device flow to complete (blocking).
+// Only call this after StartLogin returned a user code.
+func (a *App) PollLogin() error {
+	if pendingDeviceLogin == nil {
+		return fmt.Errorf("no pending login")
+	}
+	p := pendingDeviceLogin
+	pendingDeviceLogin = nil
+
+	tokens, err := auth.PollForToken(a.ctx, twitchClientID, p.DeviceCode, p.Interval)
+	if err != nil {
+		return fmt.Errorf("login: %w", err)
+	}
+	return a.finishLogin(tokens)
+}
+
 func (a *App) loginDeviceFlow() error {
 	dfr, err := auth.StartDeviceFlow(twitchClientID, twitchScopes)
 	if err != nil {
 		return fmt.Errorf("login: %w", err)
 	}
 
-	// VerificationURI includes the device code, so the user just clicks Authorize.
 	runtime.BrowserOpenURL(a.ctx, dfr.VerificationURI)
 
 	tokens, err := auth.PollForToken(a.ctx, twitchClientID, dfr.DeviceCode, dfr.Interval)

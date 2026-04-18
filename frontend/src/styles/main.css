@@ -312,6 +312,30 @@ input[type="range"] { flex: 1; accent-color: var(--accent); cursor: pointer; }
 .login-center h2 { font-size: 24px; }
 .login-center p  { color: var(--text-muted); max-width: 360px; line-height: 1.6; }
 
+.device-code {
+  font-size: 36px;
+  font-weight: 700;
+  letter-spacing: 6px;
+  font-family: monospace;
+  background: var(--bg-tertiary);
+  color: var(--accent);
+  border: 2px solid var(--accent);
+  border-radius: 10px;
+  padding: 14px 32px;
+  user-select: all;
+}
+
+.login-hint {
+  font-size: 13px;
+  color: var(--text-muted);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.4; }
+}
+
 /* ─── Sidebar user avatar ────────────────────────────────────────────────── */
 .sidebar-user {
   display: flex;
