@@ -68,32 +68,20 @@ type UserInfo struct {
 	ProfileImageURL string `json:"profileImageUrl"`
 }
 
-// Login starts the PKCE OAuth flow, opens the browser, waits for callback,
-// fetches user info, and persists the token to the database.
+// Login starts the Twitch Device Code Grant Flow. Opens the browser to
+// the Twitch activation page and polls until the user authorizes the app.
 func (a *App) Login() error {
-	verifier, err := auth.GenerateCodeVerifier()
+	dfr, err := auth.StartDeviceFlow(twitchClientID, "user:read:chat")
 	if err != nil {
-		return fmt.Errorf("login: generate verifier: %w", err)
+		return fmt.Errorf("login: %w", err)
 	}
 
-	challenge := auth.CodeChallenge(verifier)
+	// Open the verification URI — code is embedded so user just clicks Authorize.
+	runtime.BrowserOpenURL(a.ctx, dfr.VerificationURI)
 
-	state, err := auth.GenerateState()
+	tokens, err := auth.PollForToken(a.ctx, twitchClientID, dfr.DeviceCode, dfr.Interval)
 	if err != nil {
-		return fmt.Errorf("login: generate state: %w", err)
-	}
-
-	authURL := auth.BuildAuthURL(twitchClientID, state, challenge)
-	runtime.BrowserOpenURL(a.ctx, authURL)
-
-	code, err := auth.ListenForCallback(a.ctx, state)
-	if err != nil {
-		return fmt.Errorf("login: callback: %w", err)
-	}
-
-	tokens, err := auth.ExchangeCode(twitchClientID, code, verifier)
-	if err != nil {
-		return fmt.Errorf("login: exchange code: %w", err)
+		return fmt.Errorf("login: %w", err)
 	}
 
 	user, err := twitch.GetCurrentUser(twitchClientID, tokens.AccessToken)
