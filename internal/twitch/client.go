@@ -286,11 +286,90 @@ type LiveStream struct {
 
 // ChannelInfo holds the result from GET /helix/channels.
 type ChannelInfo struct {
-	BroadcasterID    string `json:"broadcaster_id"`
-	BroadcasterLogin string `json:"broadcaster_login"`
-	GameID           string `json:"game_id"`
-	GameName         string `json:"game_name"`
-	Title            string `json:"title"`
+	BroadcasterID       string   `json:"broadcaster_id"`
+	BroadcasterLogin    string   `json:"broadcaster_login"`
+	GameID              string   `json:"game_id"`
+	GameName            string   `json:"game_name"`
+	Title               string   `json:"title"`
+	BroadcasterLanguage string   `json:"broadcaster_language"`
+	Tags                []string `json:"tags"`
+}
+
+// CategoryResult is a game/category returned from GET /helix/search/categories.
+type CategoryResult struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	BoxArtURL string `json:"box_art_url"`
+}
+
+// ModifyChannel updates the broadcaster's channel information.
+// Requires channel:manage:broadcast scope.
+func ModifyChannel(clientID, accessToken, broadcasterID, title, gameID, language string, tags []string) error {
+	body := map[string]interface{}{}
+	if title != "" {
+		body["title"] = title
+	}
+	if gameID != "" {
+		body["game_id"] = gameID
+	}
+	if language != "" {
+		body["broadcaster_language"] = language
+	}
+	if tags != nil {
+		body["tags"] = tags
+	}
+	b, err := json.Marshal(body)
+	if err != nil {
+		return err
+	}
+	url := fmt.Sprintf("%s/channels?broadcaster_id=%s", helixBase, broadcasterID)
+	req, err := http.NewRequest(http.MethodPatch, url, bytes.NewReader(b))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Client-Id", clientID)
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("twitch: modify channel: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNoContent {
+		return nil
+	}
+	respBody, _ := io.ReadAll(resp.Body)
+	return fmt.Errorf("twitch: modify channel status %d: %s", resp.StatusCode, respBody)
+}
+
+// SearchCategories searches for games/categories matching a query string.
+func SearchCategories(clientID, accessToken, query string, first int) ([]CategoryResult, error) {
+	url := fmt.Sprintf("%s/search/categories?query=%s&first=%d",
+		helixBase, query, first)
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Client-Id", clientID)
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("twitch: search categories: %w", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("twitch: search categories status %d: %s", resp.StatusCode, body)
+	}
+	var payload struct {
+		Data []CategoryResult `json:"data"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil, fmt.Errorf("twitch: search categories decode: %w", err)
+	}
+	return payload.Data, nil
 }
 
 // GetFollowedStreams returns live streams from channels the user follows.

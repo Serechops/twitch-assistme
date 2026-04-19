@@ -24,7 +24,7 @@ import (
 
 const (
 	twitchRedirectURI = "http://localhost:3333"
-	twitchScopes      = "user:read:chat channel:manage:polls channel:manage:raids user:read:follows"
+	twitchScopes      = "user:read:chat channel:manage:polls channel:manage:raids user:read:follows channel:manage:broadcast"
 )
 
 // App is the main application struct bound to the Wails frontend.
@@ -919,4 +919,76 @@ func (a *App) CancelRaid() error {
 		return fmt.Errorf("not authenticated")
 	}
 	return twitch.CancelRaid(twitchClientID, row.AccessToken, row.UserID)
+}
+
+// ChannelInfoDTO is the frontend-facing channel info structure.
+type ChannelInfoDTO struct {
+	Title    string   `json:"title"`
+	GameID   string   `json:"gameID"`
+	GameName string   `json:"gameName"`
+	Language string   `json:"language"`
+	Tags     []string `json:"tags"`
+}
+
+// CategoryDTO is a game/category search result.
+type CategoryDTO struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	BoxArtURL string `json:"boxArtURL"`
+}
+
+// GetMyChannelInfo fetches the authenticated broadcaster's current channel information.
+func (a *App) GetMyChannelInfo() (*ChannelInfoDTO, error) {
+	row, err := a.database.GetAuth()
+	if err != nil || row == nil || row.AccessToken == "" {
+		return nil, fmt.Errorf("not authenticated")
+	}
+	info, err := twitch.GetChannelInfo(twitchClientID, row.AccessToken, row.UserID)
+	if err != nil {
+		return nil, err
+	}
+	tags := info.Tags
+	if tags == nil {
+		tags = []string{}
+	}
+	return &ChannelInfoDTO{
+		Title:    info.Title,
+		GameID:   info.GameID,
+		GameName: info.GameName,
+		Language: info.BroadcasterLanguage,
+		Tags:     tags,
+	}, nil
+}
+
+// UpdateChannelInfo updates the broadcaster's channel title, game, language, and tags.
+func (a *App) UpdateChannelInfo(title, gameID, language string, tags []string) error {
+	row, err := a.database.GetAuth()
+	if err != nil || row == nil || row.AccessToken == "" {
+		return fmt.Errorf("not authenticated")
+	}
+	return twitch.ModifyChannel(twitchClientID, row.AccessToken, row.UserID, title, gameID, language, tags)
+}
+
+// SearchCategories searches for Twitch categories/games matching the query.
+func (a *App) SearchCategories(query string) ([]CategoryDTO, error) {
+	if query == "" {
+		return []CategoryDTO{}, nil
+	}
+	row, err := a.database.GetAuth()
+	if err != nil || row == nil || row.AccessToken == "" {
+		return nil, fmt.Errorf("not authenticated")
+	}
+	results, err := twitch.SearchCategories(twitchClientID, row.AccessToken, query, 10)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]CategoryDTO, 0, len(results))
+	for _, r := range results {
+		out = append(out, CategoryDTO{
+			ID:        r.ID,
+			Name:      r.Name,
+			BoxArtURL: r.BoxArtURL,
+		})
+	}
+	return out, nil
 }

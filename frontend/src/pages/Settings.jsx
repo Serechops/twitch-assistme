@@ -9,6 +9,7 @@ export default function Settings() {
   const [notice, setNotice] = useState(null)
   const [customFileName, setCustomFileName] = useState('')
   const [busy, setBusy] = useState(false)
+  const [saved, setSaved] = useState(false)
 
   useEffect(() => {
     GetSettings().then(settings => setS(settings))
@@ -27,7 +28,8 @@ export default function Settings() {
     try {
       await SaveSettings(s)
       window.dispatchEvent(new CustomEvent('settings:changed'))
-      showNotice('success', 'Settings saved.')
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2500)
     } catch (e) {
       showNotice('error', String(e))
     } finally {
@@ -204,8 +206,12 @@ export default function Settings() {
       </div>
 
       <div className="save-row">
-        <button className="btn btn-primary" onClick={handleSave} disabled={busy}>
-          {busy ? 'Saving…' : 'Save settings'}
+        <button
+          className={`btn btn-primary${saved ? ' btn--saved' : ''}`}
+          onClick={handleSave}
+          disabled={busy || saved}
+        >
+          {busy ? 'Saving…' : saved ? '✓ Saved!' : 'Save settings'}
         </button>
       </div>
     </>

@@ -64,6 +64,42 @@ export namespace main {
 		    return a;
 		}
 	}
+	export class CategoryDTO {
+	    id: string;
+	    name: string;
+	    boxArtURL: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new CategoryDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.boxArtURL = source["boxArtURL"];
+	    }
+	}
+	export class ChannelInfoDTO {
+	    title: string;
+	    gameID: string;
+	    gameName: string;
+	    language: string;
+	    tags: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new ChannelInfoDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.title = source["title"];
+	        this.gameID = source["gameID"];
+	        this.gameName = source["gameName"];
+	        this.language = source["language"];
+	        this.tags = source["tags"];
+	    }
+	}
 	
 	export class PollDTO {
 	    id: string;

@@ -38,6 +38,10 @@ export function GetFollowedLiveChannels() {
   return window['go']['main']['App']['GetFollowedLiveChannels']();
 }
 
+export function GetMyChannelInfo() {
+  return window['go']['main']['App']['GetMyChannelInfo']();
+}
+
 export function GetPollArchive() {
   return window['go']['main']['App']['GetPollArchive']();
 }
@@ -94,6 +98,10 @@ export function SaveSettings(arg1) {
   return window['go']['main']['App']['SaveSettings'](arg1);
 }
 
+export function SearchCategories(arg1) {
+  return window['go']['main']['App']['SearchCategories'](arg1);
+}
+
 export function SearchRaidTargets(arg1) {
   return window['go']['main']['App']['SearchRaidTargets'](arg1);
 }
@@ -108,4 +116,8 @@ export function StartRaid(arg1) {
 
 export function TestSound() {
   return window['go']['main']['App']['TestSound']();
+}
+
+export function UpdateChannelInfo(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['UpdateChannelInfo'](arg1, arg2, arg3, arg4);
 }

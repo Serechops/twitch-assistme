@@ -20,6 +20,8 @@ export function GetConnectionStatus():Promise<string>;
 
 export function GetFollowedLiveChannels():Promise<Array<main.RaidTargetDTO>>;
 
+export function GetMyChannelInfo():Promise<main.ChannelInfoDTO>;
+
 export function GetPollArchive():Promise<Array<main.ArchivedPollDTO>>;
 
 export function GetPollTemplates():Promise<Array<main.PollTemplateDTO>>;
@@ -48,6 +50,8 @@ export function SavePollTemplate(arg1:string,arg2:string,arg3:Array<string>,arg4
 
 export function SaveSettings(arg1:main.SettingsDTO):Promise<void>;
 
+export function SearchCategories(arg1:string):Promise<Array<main.CategoryDTO>>;
+
 export function SearchRaidTargets(arg1:string):Promise<Array<main.RaidTargetDTO>>;
 
 export function StartLogin():Promise<string>;
@@ -55,3 +59,5 @@ export function StartLogin():Promise<string>;
 export function StartRaid(arg1:string):Promise<void>;
 
 export function TestSound():Promise<void>;
+
+export function UpdateChannelInfo(arg1:string,arg2:string,arg3:string,arg4:Array<string>):Promise<void>;
