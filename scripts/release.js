@@ -146,7 +146,7 @@ run('gh', [
   '--title', `Twitch AssistMe ${tag}`,
   '--notes-file', notesFile,
   '--draft',
-], { cwd: ROOT })
+], { cwd: ROOT, shell: false })
 
 // cleanup
 try { fs.unlinkSync(notesFile) } catch (_) {}
