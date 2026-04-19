@@ -400,6 +400,22 @@ func (a *App) ConnectEventSub() error {
 	}
 	client.OnPollEnd = func(evt twitch.PollEvent) {
 		runtime.EventsEmit(a.ctx, "poll:end", evt)
+		// Auto-archive the completed poll in the local DB.
+		if a.database != nil {
+			choices := make([]db.ArchivedPollChoice, len(evt.Choices))
+			for i, c := range evt.Choices {
+				choices[i] = db.ArchivedPollChoice{ID: c.ID, Title: c.Title, Votes: c.Votes}
+			}
+			_ = a.database.SavePollArchive(db.ArchivedPoll{
+				PollID:    evt.ID,
+				Title:     evt.Title,
+				Status:    evt.Status,
+				Choices:   choices,
+				StartedAt: evt.StartedAt,
+				EndedAt:   evt.EndedAt,
+				CreatedAt: time.Now().Unix(),
+			})
+		}
 	}
 
 	ctx, cancel := context.WithCancel(a.ctx)
@@ -649,4 +665,101 @@ func (a *App) GetPolls() ([]PollDTO, error) {
 		dtos[i] = pollToDTO(p)
 	}
 	return dtos, nil
+}
+
+// ─── Poll Archive & Templates ─────────────────────────────────────────────────
+
+// ArchivedPollDTO is a past poll sent to the frontend.
+type ArchivedPollDTO struct {
+	ID        int64           `json:"id"`
+	PollID    string          `json:"pollId"`
+	Title     string          `json:"title"`
+	Status    string          `json:"status"`
+	Duration  int             `json:"duration"`
+	Choices   []PollChoiceDTO `json:"choices"`
+	StartedAt string          `json:"startedAt"`
+	EndedAt   string          `json:"endedAt"`
+	CreatedAt int64           `json:"createdAt"`
+}
+
+// PollTemplateDTO is a reusable poll template sent to the frontend.
+type PollTemplateDTO struct {
+	ID        int64    `json:"id"`
+	Name      string   `json:"name"`
+	Title     string   `json:"title"`
+	Choices   []string `json:"choices"`
+	Duration  int      `json:"duration"`
+	CreatedAt int64    `json:"createdAt"`
+}
+
+// GetPollArchive returns all locally archived polls, newest first.
+func (a *App) GetPollArchive() ([]ArchivedPollDTO, error) {
+	rows, err := a.database.GetPollArchive()
+	if err != nil {
+		return nil, err
+	}
+	out := make([]ArchivedPollDTO, len(rows))
+	for i, r := range rows {
+		choices := make([]PollChoiceDTO, len(r.Choices))
+		for j, c := range r.Choices {
+			choices[j] = PollChoiceDTO{ID: c.ID, Title: c.Title, Votes: c.Votes}
+		}
+		out[i] = ArchivedPollDTO{
+			ID:        r.ID,
+			PollID:    r.PollID,
+			Title:     r.Title,
+			Status:    r.Status,
+			Duration:  r.Duration,
+			Choices:   choices,
+			StartedAt: r.StartedAt,
+			EndedAt:   r.EndedAt,
+			CreatedAt: r.CreatedAt,
+		}
+	}
+	return out, nil
+}
+
+// GetPollTemplates returns all saved poll templates.
+func (a *App) GetPollTemplates() ([]PollTemplateDTO, error) {
+	rows, err := a.database.GetPollTemplates()
+	if err != nil {
+		return nil, err
+	}
+	out := make([]PollTemplateDTO, len(rows))
+	for i, t := range rows {
+		out[i] = PollTemplateDTO{
+			ID:        t.ID,
+			Name:      t.Name,
+			Title:     t.Title,
+			Choices:   t.Choices,
+			Duration:  t.Duration,
+			CreatedAt: t.CreatedAt,
+		}
+	}
+	return out, nil
+}
+
+// SavePollTemplate saves a new reusable poll template.
+func (a *App) SavePollTemplate(name string, title string, choices []string, duration int) error {
+	if name == "" {
+		return fmt.Errorf("template name is required")
+	}
+	if title == "" {
+		return fmt.Errorf("poll question is required")
+	}
+	if len(choices) < 2 {
+		return fmt.Errorf("at least 2 choices are required")
+	}
+	return a.database.SavePollTemplate(db.PollTemplate{
+		Name:      name,
+		Title:     title,
+		Choices:   choices,
+		Duration:  duration,
+		CreatedAt: time.Now().Unix(),
+	})
+}
+
+// DeletePollTemplate deletes a saved poll template by ID.
+func (a *App) DeletePollTemplate(id int64) error {
+	return a.database.DeletePollTemplate(id)
 }

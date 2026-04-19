@@ -14,6 +14,10 @@ export function CreatePoll(arg1, arg2, arg3) {
   return window['go']['main']['App']['CreatePoll'](arg1, arg2, arg3);
 }
 
+export function DeletePollTemplate(arg1) {
+  return window['go']['main']['App']['DeletePollTemplate'](arg1);
+}
+
 export function DisconnectEventSub() {
   return window['go']['main']['App']['DisconnectEventSub']();
 }
@@ -24,6 +28,14 @@ export function EndPoll(arg1, arg2) {
 
 export function GetConnectionStatus() {
   return window['go']['main']['App']['GetConnectionStatus']();
+}
+
+export function GetPollArchive() {
+  return window['go']['main']['App']['GetPollArchive']();
+}
+
+export function GetPollTemplates() {
+  return window['go']['main']['App']['GetPollTemplates']();
 }
 
 export function GetPolls() {
@@ -60,6 +72,10 @@ export function PollLogin() {
 
 export function SaveCustomSound(arg1, arg2) {
   return window['go']['main']['App']['SaveCustomSound'](arg1, arg2);
+}
+
+export function SavePollTemplate(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['SavePollTemplate'](arg1, arg2, arg3, arg4);
 }
 
 export function SaveSettings(arg1) {

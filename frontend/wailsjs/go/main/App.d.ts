@@ -8,11 +8,17 @@ export function ConnectEventSub():Promise<void>;
 
 export function CreatePoll(arg1:string,arg2:Array<string>,arg3:number):Promise<main.PollDTO>;
 
+export function DeletePollTemplate(arg1:number):Promise<void>;
+
 export function DisconnectEventSub():Promise<void>;
 
 export function EndPoll(arg1:string,arg2:boolean):Promise<main.PollDTO>;
 
 export function GetConnectionStatus():Promise<string>;
+
+export function GetPollArchive():Promise<Array<main.ArchivedPollDTO>>;
+
+export function GetPollTemplates():Promise<Array<main.PollTemplateDTO>>;
 
 export function GetPolls():Promise<Array<main.PollDTO>>;
 
@@ -31,6 +37,8 @@ export function Logout():Promise<void>;
 export function PollLogin():Promise<void>;
 
 export function SaveCustomSound(arg1:string,arg2:string):Promise<void>;
+
+export function SavePollTemplate(arg1:string,arg2:string,arg3:Array<string>,arg4:number):Promise<void>;
 
 export function SaveSettings(arg1:main.SettingsDTO):Promise<void>;
 

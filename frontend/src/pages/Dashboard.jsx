@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Login, Logout, ConnectEventSub, DisconnectEventSub, GetConnectionStatus, StartLogin, PollLogin, CreatePoll, EndPoll } from '../../wailsjs/go/main/App'
+import { Login, Logout, ConnectEventSub, DisconnectEventSub, GetConnectionStatus, StartLogin, PollLogin } from '../../wailsjs/go/main/App'
 import { EventsOn } from '../../wailsjs/runtime/runtime'
 import useConnectionStatus from '../hooks/useConnectionStatus'
 
@@ -12,23 +12,6 @@ export default function Dashboard({ user, setUser }) {
   const [busy, setBusy] = useState(false)
   const [deviceCode, setDeviceCode] = useState('')  // non-empty = waiting for device activation
   const feedRef = useRef(null)
-
-  // Poll state
-  const [pollTitle, setPollTitle] = useState('')
-  const [pollChoices, setPollChoices] = useState(['', ''])
-  const POLL_DURATIONS = [
-    { label: '30s', seconds: 30 },
-    { label: '1m',  seconds: 60 },
-    { label: '2m',  seconds: 120 },
-    { label: '5m',  seconds: 300 },
-    { label: '10m', seconds: 600 },
-    { label: '15m', seconds: 900 },
-    { label: '30m', seconds: 1800 },
-  ]
-  const [pollDuration, setPollDuration] = useState(120)
-  const [activePoll, setActivePoll] = useState(null)   // PollDTO or EventSub event
-  const [pollBusy, setPollBusy] = useState(false)
-  const [pollError, setPollError] = useState('')
 
   // Sync initial connection status
   useEffect(() => {
@@ -44,20 +27,6 @@ export default function Dashboard({ user, setUser }) {
       })
     })
     return () => off()
-  }, [])
-
-  // Subscribe to poll events from EventSub
-  useEffect(() => {
-    const offBegin = EventsOn('poll:begin', evt => {
-      setActivePoll({ id: evt.id, title: evt.title, choices: evt.choices, endsAt: evt.ends_at, status: 'ACTIVE' })
-    })
-    const offProgress = EventsOn('poll:progress', evt => {
-      setActivePoll(prev => prev ? { ...prev, choices: evt.choices } : prev)
-    })
-    const offEnd = EventsOn('poll:end', evt => {
-      setActivePoll({ id: evt.id, title: evt.title, choices: evt.choices, endsAt: evt.ended_at, status: evt.status })
-    })
-    return () => { offBegin(); offProgress(); offEnd() }
   }, [])
 
   // Auto-scroll chat feed
@@ -109,50 +78,6 @@ export default function Dashboard({ user, setUser }) {
   function handleDisconnect() {
     DisconnectEventSub()
     setMessages([])
-  }
-
-  function addChoice() {
-    if (pollChoices.length < 5) setPollChoices(prev => [...prev, ''])
-  }
-
-  function removeChoice(i) {
-    if (pollChoices.length > 2) setPollChoices(prev => prev.filter((_, idx) => idx !== i))
-  }
-
-  function updateChoice(i, val) {
-    setPollChoices(prev => prev.map((c, idx) => idx === i ? val : c))
-  }
-
-  async function handleCreatePoll() {
-    setPollError('')
-    const filledChoices = pollChoices.map(c => c.trim()).filter(Boolean)
-    if (!pollTitle.trim()) { setPollError('Poll question is required.'); return }
-    if (filledChoices.length < 2) { setPollError('At least 2 choices are required.'); return }
-    setPollBusy(true)
-    try {
-      const poll = await CreatePoll(pollTitle.trim(), filledChoices, pollDuration)
-      setActivePoll(poll)
-      setPollTitle('')
-      setPollChoices(['', ''])
-      setPollDuration(120) // reset to 2 min default
-    } catch (e) {
-      setPollError(String(e))
-    } finally {
-      setPollBusy(false)
-    }
-  }
-
-  async function handleEndPoll(showResults) {
-    if (!activePoll?.id) return
-    setPollBusy(true)
-    try {
-      const poll = await EndPoll(activePoll.id, showResults)
-      setActivePoll(poll)
-    } catch (e) {
-      setPollError(String(e))
-    } finally {
-      setPollBusy(false)
-    }
   }
 
   if (!user) {
@@ -234,114 +159,6 @@ export default function Dashboard({ user, setUser }) {
                 </div>
               ))
           }
-        </div>
-      </div>
-
-      {/* Active poll */}
-      {activePoll && (
-        <div className="card">
-          <div className="card-title" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span>Active Poll</span>
-            <span className={`poll-status-badge poll-status-${activePoll.status?.toLowerCase()}`}>
-              {activePoll.status}
-            </span>
-          </div>
-          <div className="poll-title">{activePoll.title}</div>
-          <div className="poll-choices">
-            {(activePoll.choices || []).map((c, i) => {
-              const totalVotes = (activePoll.choices || []).reduce((sum, ch) => sum + (ch.votes || 0), 0)
-              const pct = totalVotes > 0 ? Math.round(((c.votes || 0) / totalVotes) * 100) : 0
-              return (
-                <div className="poll-choice" key={i}>
-                  <div className="poll-choice-header">
-                    <span className="poll-choice-title">{c.title}</span>
-                    <span className="poll-choice-votes">{c.votes || 0} votes ({pct}%)</span>
-                  </div>
-                  <div className="poll-bar-track">
-                    <div className="poll-bar-fill" style={{ width: `${pct}%` }} />
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-          {activePoll.status === 'ACTIVE' && (
-            <div className="poll-actions">
-              <button className="btn btn-primary btn-sm" onClick={() => handleEndPoll(true)} disabled={pollBusy}>
-                End &amp; Show Results
-              </button>
-              <button className="btn btn-secondary btn-sm" onClick={() => handleEndPoll(false)} disabled={pollBusy}>
-                End &amp; Archive
-              </button>
-            </div>
-          )}
-          {activePoll.status !== 'ACTIVE' && (
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 10 }}>
-              <button className="btn btn-secondary btn-sm" onClick={() => setActivePoll(null)}>Clear Poll</button>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Poll creator */}
-      <div className="card">
-        <div className="card-title">Create Poll</div>
-        {pollError && <div className="notice error">{pollError}</div>}
-        <div className="settings-group">
-          <div className="setting-row" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 6 }}>
-            <div className="setting-label">Question</div>
-            <input
-              className="text-input"
-              type="text"
-              placeholder="Ask your viewers something…"
-              maxLength={60}
-              value={pollTitle}
-              onChange={e => setPollTitle(e.target.value)}
-            />
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <div className="setting-label">Choices ({pollChoices.length}/5)</div>
-            {pollChoices.map((c, i) => (
-              <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <input
-                  className="text-input"
-                  type="text"
-                  placeholder={`Choice ${i + 1}`}
-                  maxLength={25}
-                  value={c}
-                  onChange={e => updateChoice(i, e.target.value)}
-                />
-                {pollChoices.length > 2 && (
-                  <button className="btn btn-danger btn-sm" onClick={() => removeChoice(i)} title="Remove">✕</button>
-                )}
-              </div>
-            ))}
-            {pollChoices.length < 5 && (
-              <button className="btn btn-secondary btn-sm" style={{ alignSelf: 'flex-start' }} onClick={addChoice}>
-                + Add choice
-              </button>
-            )}
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <div className="setting-label">Duration</div>
-            <div className="poll-duration-presets">
-              {POLL_DURATIONS.map(({ label, seconds }) => (
-                <button
-                  key={seconds}
-                  className={`btn btn-sm poll-duration-btn${pollDuration === seconds ? ' poll-duration-btn--active' : ''}`}
-                  onClick={() => setPollDuration(seconds)}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 14 }}>
-          <button className="btn btn-primary" onClick={handleCreatePoll} disabled={pollBusy || activePoll?.status === 'ACTIVE'}>
-            {pollBusy ? 'Creating…' : activePoll?.status === 'ACTIVE' ? 'Poll already active' : 'Start Poll'}
-          </button>
         </div>
       </div>
     </>

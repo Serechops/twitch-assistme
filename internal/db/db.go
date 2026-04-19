@@ -2,6 +2,7 @@ package db
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -65,6 +66,25 @@ func (d *DB) migrate() error {
 		`CREATE TABLE IF NOT EXISTS settings (
 			key   TEXT PRIMARY KEY NOT NULL,
 			value TEXT NOT NULL DEFAULT ''
+		)`,
+		`CREATE TABLE IF NOT EXISTS poll_archive (
+			id         INTEGER PRIMARY KEY AUTOINCREMENT,
+			poll_id    TEXT    NOT NULL DEFAULT '',
+			title      TEXT    NOT NULL DEFAULT '',
+			status     TEXT    NOT NULL DEFAULT '',
+			duration   INTEGER NOT NULL DEFAULT 0,
+			choices    TEXT    NOT NULL DEFAULT '[]',
+			started_at TEXT    NOT NULL DEFAULT '',
+			ended_at   TEXT    NOT NULL DEFAULT '',
+			created_at INTEGER NOT NULL DEFAULT 0
+		)`,
+		`CREATE TABLE IF NOT EXISTS poll_templates (
+			id         INTEGER PRIMARY KEY AUTOINCREMENT,
+			name       TEXT    NOT NULL DEFAULT '',
+			title      TEXT    NOT NULL DEFAULT '',
+			choices    TEXT    NOT NULL DEFAULT '[]',
+			duration   INTEGER NOT NULL DEFAULT 120,
+			created_at INTEGER NOT NULL DEFAULT 0
 		)`,
 	}
 
@@ -203,5 +223,129 @@ func (d *DB) SaveSetting(key, value string) error {
 		 ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
 		key, value,
 	)
+	return err
+}
+
+// ─── Poll Archive ────────────────────────────────────────────────────────────
+
+// ArchivedPollChoice is a single choice stored inside a poll_archive record.
+type ArchivedPollChoice struct {
+	ID    string `json:"id"`
+	Title string `json:"title"`
+	Votes int    `json:"votes"`
+}
+
+// ArchivedPoll is a completed poll stored in the local database.
+type ArchivedPoll struct {
+	ID        int64
+	PollID    string
+	Title     string
+	Status    string
+	Duration  int
+	Choices   []ArchivedPollChoice
+	StartedAt string
+	EndedAt   string
+	CreatedAt int64
+}
+
+// SavePollArchive inserts a completed poll into the archive.
+// Duplicate poll_ids are ignored (idempotent).
+func (d *DB) SavePollArchive(p ArchivedPoll) error {
+	choicesJSON, err := json.Marshal(p.Choices)
+	if err != nil {
+		return fmt.Errorf("db: marshal poll choices: %w", err)
+	}
+	_, err = d.conn.Exec(
+		`INSERT OR IGNORE INTO poll_archive
+		 (poll_id, title, status, duration, choices, started_at, ended_at, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		p.PollID, p.Title, p.Status, p.Duration,
+		string(choicesJSON), p.StartedAt, p.EndedAt, p.CreatedAt,
+	)
+	return err
+}
+
+// GetPollArchive returns all archived polls, newest first.
+func (d *DB) GetPollArchive() ([]ArchivedPoll, error) {
+	rows, err := d.conn.Query(
+		`SELECT id, poll_id, title, status, duration, choices, started_at, ended_at, created_at
+		 FROM poll_archive ORDER BY created_at DESC`,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("db: get poll archive: %w", err)
+	}
+	defer rows.Close()
+
+	var out []ArchivedPoll
+	for rows.Next() {
+		var p ArchivedPoll
+		var choicesJSON string
+		if err := rows.Scan(&p.ID, &p.PollID, &p.Title, &p.Status, &p.Duration,
+			&choicesJSON, &p.StartedAt, &p.EndedAt, &p.CreatedAt); err != nil {
+			return nil, fmt.Errorf("db: scan poll archive row: %w", err)
+		}
+		if err := json.Unmarshal([]byte(choicesJSON), &p.Choices); err != nil {
+			p.Choices = nil
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
+// ─── Poll Templates ──────────────────────────────────────────────────────────
+
+// PollTemplate is a saved reusable poll configuration.
+type PollTemplate struct {
+	ID        int64
+	Name      string
+	Title     string
+	Choices   []string
+	Duration  int
+	CreatedAt int64
+}
+
+// SavePollTemplate inserts a new poll template.
+func (d *DB) SavePollTemplate(t PollTemplate) error {
+	choicesJSON, err := json.Marshal(t.Choices)
+	if err != nil {
+		return fmt.Errorf("db: marshal template choices: %w", err)
+	}
+	_, err = d.conn.Exec(
+		`INSERT INTO poll_templates (name, title, choices, duration, created_at)
+		 VALUES (?, ?, ?, ?, ?)`,
+		t.Name, t.Title, string(choicesJSON), t.Duration, t.CreatedAt,
+	)
+	return err
+}
+
+// GetPollTemplates returns all saved templates, newest first.
+func (d *DB) GetPollTemplates() ([]PollTemplate, error) {
+	rows, err := d.conn.Query(
+		`SELECT id, name, title, choices, duration, created_at
+		 FROM poll_templates ORDER BY created_at DESC`,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("db: get poll templates: %w", err)
+	}
+	defer rows.Close()
+
+	var out []PollTemplate
+	for rows.Next() {
+		var t PollTemplate
+		var choicesJSON string
+		if err := rows.Scan(&t.ID, &t.Name, &t.Title, &choicesJSON, &t.Duration, &t.CreatedAt); err != nil {
+			return nil, fmt.Errorf("db: scan poll template row: %w", err)
+		}
+		if err := json.Unmarshal([]byte(choicesJSON), &t.Choices); err != nil {
+			t.Choices = nil
+		}
+		out = append(out, t)
+	}
+	return out, rows.Err()
+}
+
+// DeletePollTemplate removes a template by ID.
+func (d *DB) DeletePollTemplate(id int64) error {
+	_, err := d.conn.Exec(`DELETE FROM poll_templates WHERE id = ?`, id)
 	return err
 }

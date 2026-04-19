@@ -4,6 +4,7 @@ import { GetUser } from '../wailsjs/go/main/App'
 import { EventsOn } from '../wailsjs/runtime/runtime'
 import Dashboard from './pages/Dashboard'
 import Settings from './pages/Settings'
+import Polls from './pages/Polls'
 import useChatNotification from './hooks/useChatNotification'
 import appLogo from './assets/images/twitch_assistme.png'
 
@@ -29,6 +30,9 @@ export default function App() {
           <NavLink to="/" end className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>
             Dashboard
           </NavLink>
+          <NavLink to="/polls" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>
+            Polls
+          </NavLink>
           <NavLink to="/settings" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>
             Settings
           </NavLink>
@@ -49,7 +53,10 @@ export default function App() {
 
       <main className="main-content">
         <Routes>
-          <Route path="/" element={<Dashboard user={user} setUser={setUser} />} />
+          <Route path="/" element={
+            <Dashboard user={user} setUser={setUser} />
+          } />
+          <Route path="/polls" element={<Polls />} />
           <Route path="/settings" element={<Settings />} />
         </Routes>
       </main>
