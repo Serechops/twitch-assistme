@@ -32,7 +32,7 @@ const crypto         = require('crypto')
 // ── helpers ────────────────────────────────────────────────────────────────
 
 function run(cmd, args, opts = {}) {
-  const result = spawnSync(cmd, args, { stdio: 'inherit', shell: true, ...opts })
+  const result = spawnSync(cmd, args, { stdio: 'inherit', shell: false, ...opts })
   if (result.status !== 0) {
     console.error(`\nERROR: "${cmd} ${args.join(' ')}" exited with code ${result.status}`)
     process.exit(result.status ?? 1)
@@ -41,7 +41,7 @@ function run(cmd, args, opts = {}) {
 }
 
 function runCapture(cmd, args, opts = {}) {
-  const result = spawnSync(cmd, args, { encoding: 'utf8', shell: true, ...opts })
+  const result = spawnSync(cmd, args, { encoding: 'utf8', shell: false, ...opts })
   return (result.stdout || '').trim()
 }
 
@@ -122,11 +122,11 @@ async function scanWithVirusTotal(apiKey, exePath) {
 
   const uploadBody = JSON.parse(upload.stdout)
   const analysisId = uploadBody.data.id
-  console.log('  Waiting for analysis', )
+  process.stdout.write('  Waiting for analysis ')
 
-  // 3. Poll until complete (max ~3 min, 15 s intervals)
-  for (let i = 0; i < 12; i++) {
-    await sleep(15_000)
+  // 3. Poll until complete (max ~8 min, 20 s intervals)
+  for (let i = 0; i < 24; i++) {
+    await sleep(20_000)
     process.stdout.write('.')
     const poll = await httpsGet(
       `https://www.virustotal.com/api/v3/analyses/${analysisId}`,
@@ -139,7 +139,7 @@ async function scanWithVirusTotal(apiKey, exePath) {
     }
   }
 
-  throw new Error('Analysis timed out after 3 minutes.')
+  throw new Error('Analysis timed out after 8 minutes.')
 }
 
 // ── main ───────────────────────────────────────────────────────────────────
@@ -180,7 +180,7 @@ async function scanWithVirusTotal(apiKey, exePath) {
   console.log(`Changelog : ${releaseNotes.split('\n').length} lines extracted\n`)
 
   // 3. check gh auth ─────────────────────────────────────────────────────────
-  const ghStatus = spawnSync('gh', ['auth', 'status'], { shell: true, encoding: 'utf8' })
+  const ghStatus = spawnSync('gh', ['auth', 'status'], { shell: false, encoding: 'utf8' })
   if (ghStatus.status !== 0) {
     console.error('ERROR: gh CLI is not authenticated. Run:  gh auth login')
     process.exit(1)
