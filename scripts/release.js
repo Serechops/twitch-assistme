@@ -114,35 +114,15 @@ if (!fs.existsSync(EXE)) {
 
 console.log(`\nBinary: ${EXE}`)
 
-// ── 6. zip ─────────────────────────────────────────────────────────────────
-
-const zipName = `twitch-assistme-${tag}-windows-amd64.zip`
-const zipPath = path.join(BIN_DIR, zipName)
-
-if (fs.existsSync(zipPath)) fs.unlinkSync(zipPath)
-
-console.log(`Zipping → ${zipName}`)
-run('powershell', [
-  '-Command',
-  `Compress-Archive -Path "${EXE}" -DestinationPath "${zipPath}" -Force`,
-], { shell: false })
-
-if (!fs.existsSync(zipPath)) {
-  console.error('ERROR: Zip creation failed.')
-  process.exit(1)
-}
-
-// ── 7. write notes to temp file ────────────────────────────────────────────
+// ── 6. create draft GitHub release ────────────────────────────────────────
 
 const notesFile = path.join(os.tmpdir(), `assistme-release-${tag}.md`)
 fs.writeFileSync(notesFile, releaseNotes, 'utf8')
 
-// ── 8. create draft GitHub release ────────────────────────────────────────
-
 console.log(`\nCreating DRAFT GitHub release ${tag}…\n`)
 run('gh', [
   'release', 'create', tag,
-  zipPath,
+  EXE,
   '--title', `Twitch AssistMe ${tag}`,
   '--notes-file', notesFile,
   '--draft',
@@ -151,7 +131,7 @@ run('gh', [
 // cleanup
 try { fs.unlinkSync(notesFile) } catch (_) {}
 
-// ── 9. done ────────────────────────────────────────────────────────────────
+// ── 7. done ────────────────────────────────────────────────────────────────
 
 const repoUrl = runCapture('gh', ['repo', 'view', '--json', 'url', '-q', '.url'], { cwd: ROOT })
 
@@ -160,7 +140,7 @@ console.log(`
 
   Draft release : ${repoUrl}/releases
   Tag           : ${tag}
-  Asset         : ${zipName}
+  Asset         : twitch-assistme.exe
 
 Review the draft on GitHub and click "Publish release" when ready.
 `)
