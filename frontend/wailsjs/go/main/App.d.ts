@@ -4,11 +4,17 @@ import {main} from '../models';
 
 export function CancelRaid():Promise<void>;
 
+export function CancelRedemption(arg1:string,arg2:string):Promise<void>;
+
 export function ClearCustomSound():Promise<void>;
 
 export function ConnectEventSub():Promise<void>;
 
+export function CreateCustomReward(arg1:main.CreateRewardInput):Promise<main.CustomRewardDTO>;
+
 export function CreatePoll(arg1:string,arg2:Array<string>,arg3:number):Promise<main.PollDTO>;
+
+export function DeleteCustomReward(arg1:string):Promise<void>;
 
 export function DeletePollTemplate(arg1:number):Promise<void>;
 
@@ -16,11 +22,17 @@ export function DisconnectEventSub():Promise<void>;
 
 export function EndPoll(arg1:string,arg2:boolean):Promise<main.PollDTO>;
 
+export function FulfillRedemption(arg1:string,arg2:string):Promise<void>;
+
 export function GetConnectionStatus():Promise<string>;
+
+export function GetCustomRewards():Promise<Array<main.CustomRewardDTO>>;
 
 export function GetFollowedLiveChannels():Promise<Array<main.RaidTargetDTO>>;
 
 export function GetMyChannelInfo():Promise<main.ChannelInfoDTO>;
+
+export function GetPendingRedemptions(arg1:string):Promise<Array<main.RedemptionDTO>>;
 
 export function GetPollArchive():Promise<Array<main.ArchivedPollDTO>>;
 
@@ -60,4 +72,8 @@ export function StartRaid(arg1:string):Promise<void>;
 
 export function TestSound():Promise<void>;
 
+export function ToggleCustomRewardPaused(arg1:string,arg2:boolean):Promise<void>;
+
 export function UpdateChannelInfo(arg1:string,arg2:string,arg3:string,arg4:Array<string>):Promise<void>;
+
+export function UpdateCustomReward(arg1:string,arg2:main.CreateRewardInput):Promise<main.CustomRewardDTO>;

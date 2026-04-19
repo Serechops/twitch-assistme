@@ -24,7 +24,7 @@ import (
 
 const (
 	twitchRedirectURI = "http://localhost:3333"
-	twitchScopes      = "user:read:chat channel:manage:polls channel:manage:raids user:read:follows channel:manage:broadcast"
+	twitchScopes      = "user:read:chat channel:manage:polls channel:manage:raids user:read:follows channel:manage:broadcast channel:manage:redemptions"
 )
 
 // App is the main application struct bound to the Wails frontend.
@@ -991,4 +991,223 @@ func (a *App) SearchCategories(query string) ([]CategoryDTO, error) {
 		})
 	}
 	return out, nil
+}
+
+// ─── Custom Rewards ───────────────────────────────────────────────────────────
+
+// CustomRewardDTO is the frontend-facing custom reward structure.
+type CustomRewardDTO struct {
+	ID              string `json:"id"`
+	Title           string `json:"title"`
+	Prompt          string `json:"prompt"`
+	Cost            int    `json:"cost"`
+	BackgroundColor string `json:"backgroundColor"`
+	IsEnabled       bool   `json:"isEnabled"`
+	IsPaused        bool   `json:"isPaused"`
+	IsInStock       bool   `json:"isInStock"`
+
+	IsUserInputRequired               bool `json:"isUserInputRequired"`
+	ShouldRedemptionsSkipRequestQueue bool `json:"shouldRedemptionsSkipRequestQueue"`
+
+	MaxPerStreamEnabled  bool `json:"maxPerStreamEnabled"`
+	MaxPerStream         int  `json:"maxPerStream"`
+	MaxPerUserEnabled    bool `json:"maxPerUserEnabled"`
+	MaxPerUser           int  `json:"maxPerUser"`
+	CooldownEnabled      bool `json:"cooldownEnabled"`
+	CooldownSeconds      int  `json:"cooldownSeconds"`
+}
+
+// RedemptionDTO is a viewer's redemption of a custom reward.
+type RedemptionDTO struct {
+	ID         string `json:"id"`
+	UserID     string `json:"userId"`
+	UserLogin  string `json:"userLogin"`
+	UserName   string `json:"userName"`
+	UserInput  string `json:"userInput"`
+	Status     string `json:"status"`
+	RedeemedAt string `json:"redeemedAt"`
+	RewardID   string `json:"rewardId"`
+	RewardTitle string `json:"rewardTitle"`
+	RewardCost  int    `json:"rewardCost"`
+}
+
+// CreateRewardInput is the data sent from the frontend to create a reward.
+type CreateRewardInput struct {
+	Title                             string `json:"title"`
+	Cost                              int    `json:"cost"`
+	Prompt                            string `json:"prompt"`
+	IsEnabled                         bool   `json:"isEnabled"`
+	BackgroundColor                   string `json:"backgroundColor"`
+	IsUserInputRequired               bool   `json:"isUserInputRequired"`
+	ShouldRedemptionsSkipRequestQueue bool   `json:"shouldRedemptionsSkipRequestQueue"`
+	MaxPerStreamEnabled               bool   `json:"maxPerStreamEnabled"`
+	MaxPerStream                      int    `json:"maxPerStream"`
+	MaxPerUserEnabled                 bool   `json:"maxPerUserEnabled"`
+	MaxPerUser                        int    `json:"maxPerUser"`
+	CooldownEnabled                   bool   `json:"cooldownEnabled"`
+	CooldownSeconds                   int    `json:"cooldownSeconds"`
+}
+
+func rewardToDTO(r twitch.CustomReward) CustomRewardDTO {
+	return CustomRewardDTO{
+		ID:              r.ID,
+		Title:           r.Title,
+		Prompt:          r.Prompt,
+		Cost:            r.Cost,
+		BackgroundColor: r.BackgroundColor,
+		IsEnabled:       r.IsEnabled,
+		IsPaused:        r.IsPaused,
+		IsInStock:       r.IsInStock,
+		IsUserInputRequired:               r.IsUserInputRequired,
+		ShouldRedemptionsSkipRequestQueue: r.ShouldRedemptionsSkipRequestQueue,
+		MaxPerStreamEnabled: r.MaxPerStreamSetting.IsEnabled,
+		MaxPerStream:        r.MaxPerStreamSetting.MaxPerStream,
+		MaxPerUserEnabled:   r.MaxPerUserPerStreamSetting.IsEnabled,
+		MaxPerUser:          r.MaxPerUserPerStreamSetting.MaxPerUserPerStream,
+		CooldownEnabled:     r.GlobalCooldownSetting.IsEnabled,
+		CooldownSeconds:     r.GlobalCooldownSetting.GlobalCooldownSeconds,
+	}
+}
+
+// GetCustomRewards returns all manageable custom rewards for the authenticated broadcaster.
+func (a *App) GetCustomRewards() ([]CustomRewardDTO, error) {
+	row, err := a.database.GetAuth()
+	if err != nil || row == nil || row.AccessToken == "" {
+		return nil, fmt.Errorf("not authenticated")
+	}
+	rewards, err := twitch.GetCustomRewards(twitchClientID, row.AccessToken, row.UserID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]CustomRewardDTO, len(rewards))
+	for i, r := range rewards {
+		out[i] = rewardToDTO(r)
+	}
+	return out, nil
+}
+
+// CreateCustomReward creates a new channel point custom reward.
+func (a *App) CreateCustomReward(input CreateRewardInput) (*CustomRewardDTO, error) {
+	row, err := a.database.GetAuth()
+	if err != nil || row == nil || row.AccessToken == "" {
+		return nil, fmt.Errorf("not authenticated")
+	}
+	reward, err := twitch.CreateCustomReward(twitchClientID, row.AccessToken, row.UserID, twitch.CreateCustomRewardInput{
+		Title:                             input.Title,
+		Cost:                              input.Cost,
+		Prompt:                            input.Prompt,
+		IsEnabled:                         input.IsEnabled,
+		BackgroundColor:                   input.BackgroundColor,
+		IsUserInputRequired:               input.IsUserInputRequired,
+		ShouldRedemptionsSkipRequestQueue: input.ShouldRedemptionsSkipRequestQueue,
+		IsMaxPerStreamEnabled:             input.MaxPerStreamEnabled,
+		MaxPerStream:                      input.MaxPerStream,
+		IsMaxPerUserPerStreamEnabled:      input.MaxPerUserEnabled,
+		MaxPerUserPerStream:               input.MaxPerUser,
+		IsGlobalCooldownEnabled:           input.CooldownEnabled,
+		GlobalCooldownSeconds:             input.CooldownSeconds,
+	})
+	if err != nil {
+		return nil, err
+	}
+	dto := rewardToDTO(*reward)
+	return &dto, nil
+}
+
+// UpdateCustomReward updates an existing custom reward by ID.
+func (a *App) UpdateCustomReward(rewardID string, input CreateRewardInput) (*CustomRewardDTO, error) {
+	row, err := a.database.GetAuth()
+	if err != nil || row == nil || row.AccessToken == "" {
+		return nil, fmt.Errorf("not authenticated")
+	}
+	ptrBool := func(b bool) *bool { return &b }
+	ptrInt := func(i int) *int { return &i }
+	ptrStr := func(s string) *string { return &s }
+	reward, err := twitch.UpdateCustomReward(twitchClientID, row.AccessToken, row.UserID, rewardID, twitch.UpdateCustomRewardInput{
+		Title:                             ptrStr(input.Title),
+		Cost:                              ptrInt(input.Cost),
+		Prompt:                            ptrStr(input.Prompt),
+		IsEnabled:                         ptrBool(input.IsEnabled),
+		BackgroundColor:                   ptrStr(input.BackgroundColor),
+		IsUserInputRequired:               ptrBool(input.IsUserInputRequired),
+		ShouldRedemptionsSkipRequestQueue: ptrBool(input.ShouldRedemptionsSkipRequestQueue),
+		IsMaxPerStreamEnabled:             ptrBool(input.MaxPerStreamEnabled),
+		MaxPerStream:                      ptrInt(input.MaxPerStream),
+		IsMaxPerUserPerStreamEnabled:      ptrBool(input.MaxPerUserEnabled),
+		MaxPerUserPerStream:               ptrInt(input.MaxPerUser),
+		IsGlobalCooldownEnabled:           ptrBool(input.CooldownEnabled),
+		GlobalCooldownSeconds:             ptrInt(input.CooldownSeconds),
+	})
+	if err != nil {
+		return nil, err
+	}
+	dto := rewardToDTO(*reward)
+	return &dto, nil
+}
+
+// ToggleCustomRewardPaused pauses or unpauses a reward without touching other settings.
+func (a *App) ToggleCustomRewardPaused(rewardID string, paused bool) error {
+	row, err := a.database.GetAuth()
+	if err != nil || row == nil || row.AccessToken == "" {
+		return fmt.Errorf("not authenticated")
+	}
+	_, err = twitch.UpdateCustomReward(twitchClientID, row.AccessToken, row.UserID, rewardID, twitch.UpdateCustomRewardInput{
+		IsPaused: func(b bool) *bool { return &b }(paused),
+	})
+	return err
+}
+
+// DeleteCustomReward permanently removes a custom reward created by this app.
+func (a *App) DeleteCustomReward(rewardID string) error {
+	row, err := a.database.GetAuth()
+	if err != nil || row == nil || row.AccessToken == "" {
+		return fmt.Errorf("not authenticated")
+	}
+	return twitch.DeleteCustomReward(twitchClientID, row.AccessToken, row.UserID, rewardID)
+}
+
+// GetPendingRedemptions returns UNFULFILLED redemptions for the given reward.
+func (a *App) GetPendingRedemptions(rewardID string) ([]RedemptionDTO, error) {
+	row, err := a.database.GetAuth()
+	if err != nil || row == nil || row.AccessToken == "" {
+		return nil, fmt.Errorf("not authenticated")
+	}
+	redemptions, err := twitch.GetRedemptions(twitchClientID, row.AccessToken, row.UserID, rewardID, "UNFULFILLED")
+	if err != nil {
+		return nil, err
+	}
+	out := make([]RedemptionDTO, len(redemptions))
+	for i, r := range redemptions {
+		out[i] = RedemptionDTO{
+			ID:          r.ID,
+			UserID:      r.UserID,
+			UserLogin:   r.UserLogin,
+			UserName:    r.UserName,
+			UserInput:   r.UserInput,
+			Status:      r.Status,
+			RedeemedAt:  r.RedeemedAt,
+			RewardID:    r.Reward.ID,
+			RewardTitle: r.Reward.Title,
+			RewardCost:  r.Reward.Cost,
+		}
+	}
+	return out, nil
+}
+
+// FulfillRedemption marks a redemption as FULFILLED.
+func (a *App) FulfillRedemption(rewardID, redemptionID string) error {
+	row, err := a.database.GetAuth()
+	if err != nil || row == nil || row.AccessToken == "" {
+		return fmt.Errorf("not authenticated")
+	}
+	return twitch.UpdateRedemptionStatus(twitchClientID, row.AccessToken, row.UserID, rewardID, redemptionID, "FULFILLED")
+}
+
+// CancelRedemption marks a redemption as CANCELED (refunds the viewer's points).
+func (a *App) CancelRedemption(rewardID, redemptionID string) error {
+	row, err := a.database.GetAuth()
+	if err != nil || row == nil || row.AccessToken == "" {
+		return fmt.Errorf("not authenticated")
+	}
+	return twitch.UpdateRedemptionStatus(twitchClientID, row.AccessToken, row.UserID, rewardID, redemptionID, "CANCELED")
 }

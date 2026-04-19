@@ -6,6 +6,10 @@ export function CancelRaid() {
   return window['go']['main']['App']['CancelRaid']();
 }
 
+export function CancelRedemption(arg1, arg2) {
+  return window['go']['main']['App']['CancelRedemption'](arg1, arg2);
+}
+
 export function ClearCustomSound() {
   return window['go']['main']['App']['ClearCustomSound']();
 }
@@ -14,8 +18,16 @@ export function ConnectEventSub() {
   return window['go']['main']['App']['ConnectEventSub']();
 }
 
+export function CreateCustomReward(arg1) {
+  return window['go']['main']['App']['CreateCustomReward'](arg1);
+}
+
 export function CreatePoll(arg1, arg2, arg3) {
   return window['go']['main']['App']['CreatePoll'](arg1, arg2, arg3);
+}
+
+export function DeleteCustomReward(arg1) {
+  return window['go']['main']['App']['DeleteCustomReward'](arg1);
 }
 
 export function DeletePollTemplate(arg1) {
@@ -30,8 +42,16 @@ export function EndPoll(arg1, arg2) {
   return window['go']['main']['App']['EndPoll'](arg1, arg2);
 }
 
+export function FulfillRedemption(arg1, arg2) {
+  return window['go']['main']['App']['FulfillRedemption'](arg1, arg2);
+}
+
 export function GetConnectionStatus() {
   return window['go']['main']['App']['GetConnectionStatus']();
+}
+
+export function GetCustomRewards() {
+  return window['go']['main']['App']['GetCustomRewards']();
 }
 
 export function GetFollowedLiveChannels() {
@@ -40,6 +60,10 @@ export function GetFollowedLiveChannels() {
 
 export function GetMyChannelInfo() {
   return window['go']['main']['App']['GetMyChannelInfo']();
+}
+
+export function GetPendingRedemptions(arg1) {
+  return window['go']['main']['App']['GetPendingRedemptions'](arg1);
 }
 
 export function GetPollArchive() {
@@ -118,6 +142,14 @@ export function TestSound() {
   return window['go']['main']['App']['TestSound']();
 }
 
+export function ToggleCustomRewardPaused(arg1, arg2) {
+  return window['go']['main']['App']['ToggleCustomRewardPaused'](arg1, arg2);
+}
+
 export function UpdateChannelInfo(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['UpdateChannelInfo'](arg1, arg2, arg3, arg4);
+}
+
+export function UpdateCustomReward(arg1, arg2) {
+  return window['go']['main']['App']['UpdateCustomReward'](arg1, arg2);
 }

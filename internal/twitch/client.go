@@ -605,6 +605,287 @@ func CancelRaid(clientID, accessToken, broadcasterID string) error {
 	return fmt.Errorf("twitch: cancel raid status %d: %s", resp.StatusCode, body)
 }
 
+// ─── Channel Points Custom Rewards ────────────────────────────────────────────
+
+// CustomRewardSetting is the nested max/cooldown setting on a custom reward.
+type CustomRewardSetting struct {
+	IsEnabled bool `json:"is_enabled"`
+	Value     int  `json:"max_per_stream,omitempty"`
+}
+
+// CustomReward represents a broadcaster's channel point custom reward.
+type CustomReward struct {
+	ID              string `json:"id"`
+	BroadcasterID   string `json:"broadcaster_id"`
+	BroadcasterName string `json:"broadcaster_name"`
+	Title           string `json:"title"`
+	Prompt          string `json:"prompt"`
+	Cost            int    `json:"cost"`
+	BackgroundColor string `json:"background_color"`
+	IsEnabled       bool   `json:"is_enabled"`
+	IsPaused        bool   `json:"is_paused"`
+	IsInStock       bool   `json:"is_in_stock"`
+
+	IsUserInputRequired               bool `json:"is_user_input_required"`
+	ShouldRedemptionsSkipRequestQueue bool `json:"should_redemptions_skip_request_queue"`
+
+	MaxPerStreamSetting struct {
+		IsEnabled    bool `json:"is_enabled"`
+		MaxPerStream int  `json:"max_per_stream"`
+	} `json:"max_per_stream_setting"`
+
+	MaxPerUserPerStreamSetting struct {
+		IsEnabled           bool `json:"is_enabled"`
+		MaxPerUserPerStream int  `json:"max_per_user_per_stream"`
+	} `json:"max_per_user_per_stream_setting"`
+
+	GlobalCooldownSetting struct {
+		IsEnabled             bool `json:"is_enabled"`
+		GlobalCooldownSeconds int  `json:"global_cooldown_seconds"`
+	} `json:"global_cooldown_setting"`
+
+	CooldownExpiresAt string `json:"cooldown_expires_at"`
+}
+
+// GetCustomRewards returns the broadcaster's custom rewards.
+// Requires channel:manage:redemptions scope.
+func GetCustomRewards(clientID, accessToken, broadcasterID string) ([]CustomReward, error) {
+	url := fmt.Sprintf("%s/channel_points/custom_rewards?broadcaster_id=%s&only_manageable_rewards=true",
+		helixBase, broadcasterID)
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Client-Id", clientID)
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("twitch: get custom rewards: %w", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("twitch: get custom rewards status %d: %s", resp.StatusCode, body)
+	}
+	var payload struct {
+		Data []CustomReward `json:"data"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil, fmt.Errorf("twitch: get custom rewards decode: %w", err)
+	}
+	return payload.Data, nil
+}
+
+// CreateCustomRewardInput holds parameters for creating a custom reward.
+type CreateCustomRewardInput struct {
+	Title                             string `json:"title"`
+	Cost                              int    `json:"cost"`
+	Prompt                            string `json:"prompt,omitempty"`
+	IsEnabled                         bool   `json:"is_enabled"`
+	BackgroundColor                   string `json:"background_color,omitempty"`
+	IsUserInputRequired               bool   `json:"is_user_input_required"`
+	ShouldRedemptionsSkipRequestQueue bool   `json:"should_redemptions_skip_request_queue"`
+	IsMaxPerStreamEnabled             bool   `json:"is_max_per_stream_enabled,omitempty"`
+	MaxPerStream                      int    `json:"max_per_stream,omitempty"`
+	IsMaxPerUserPerStreamEnabled      bool   `json:"is_max_per_user_per_stream_enabled,omitempty"`
+	MaxPerUserPerStream               int    `json:"max_per_user_per_stream,omitempty"`
+	IsGlobalCooldownEnabled           bool   `json:"is_global_cooldown_enabled,omitempty"`
+	GlobalCooldownSeconds             int    `json:"global_cooldown_seconds,omitempty"`
+}
+
+// CreateCustomReward creates a new custom channel point reward.
+// Requires channel:manage:redemptions scope.
+func CreateCustomReward(clientID, accessToken, broadcasterID string, input CreateCustomRewardInput) (*CustomReward, error) {
+	b, err := json.Marshal(input)
+	if err != nil {
+		return nil, err
+	}
+	url := fmt.Sprintf("%s/channel_points/custom_rewards?broadcaster_id=%s", helixBase, broadcasterID)
+	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(b))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Client-Id", clientID)
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("twitch: create custom reward: %w", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("twitch: create custom reward status %d: %s", resp.StatusCode, body)
+	}
+	var payload struct {
+		Data []CustomReward `json:"data"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil, fmt.Errorf("twitch: create custom reward decode: %w", err)
+	}
+	if len(payload.Data) == 0 {
+		return nil, fmt.Errorf("twitch: create custom reward: no data returned")
+	}
+	return &payload.Data[0], nil
+}
+
+// UpdateCustomRewardInput holds the optional fields for updating a custom reward.
+// Fields that are not set are omitted from the request body.
+type UpdateCustomRewardInput struct {
+	Title                             *string `json:"title,omitempty"`
+	Cost                              *int    `json:"cost,omitempty"`
+	Prompt                            *string `json:"prompt,omitempty"`
+	IsEnabled                         *bool   `json:"is_enabled,omitempty"`
+	IsPaused                          *bool   `json:"is_paused,omitempty"`
+	BackgroundColor                   *string `json:"background_color,omitempty"`
+	IsUserInputRequired               *bool   `json:"is_user_input_required,omitempty"`
+	ShouldRedemptionsSkipRequestQueue *bool   `json:"should_redemptions_skip_request_queue,omitempty"`
+	IsMaxPerStreamEnabled             *bool   `json:"is_max_per_stream_enabled,omitempty"`
+	MaxPerStream                      *int    `json:"max_per_stream,omitempty"`
+	IsMaxPerUserPerStreamEnabled      *bool   `json:"is_max_per_user_per_stream_enabled,omitempty"`
+	MaxPerUserPerStream               *int    `json:"max_per_user_per_stream,omitempty"`
+	IsGlobalCooldownEnabled           *bool   `json:"is_global_cooldown_enabled,omitempty"`
+	GlobalCooldownSeconds             *int    `json:"global_cooldown_seconds,omitempty"`
+}
+
+// UpdateCustomReward patches an existing custom reward.
+// Requires channel:manage:redemptions scope.
+func UpdateCustomReward(clientID, accessToken, broadcasterID, rewardID string, input UpdateCustomRewardInput) (*CustomReward, error) {
+	b, err := json.Marshal(input)
+	if err != nil {
+		return nil, err
+	}
+	url := fmt.Sprintf("%s/channel_points/custom_rewards?broadcaster_id=%s&id=%s",
+		helixBase, broadcasterID, rewardID)
+	req, err := http.NewRequest(http.MethodPatch, url, bytes.NewReader(b))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Client-Id", clientID)
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("twitch: update custom reward: %w", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("twitch: update custom reward status %d: %s", resp.StatusCode, body)
+	}
+	var payload struct {
+		Data []CustomReward `json:"data"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil, fmt.Errorf("twitch: update custom reward decode: %w", err)
+	}
+	if len(payload.Data) == 0 {
+		return nil, fmt.Errorf("twitch: update custom reward: no data returned")
+	}
+	return &payload.Data[0], nil
+}
+
+// DeleteCustomReward removes a custom reward created by this app.
+// Requires channel:manage:redemptions scope.
+func DeleteCustomReward(clientID, accessToken, broadcasterID, rewardID string) error {
+	url := fmt.Sprintf("%s/channel_points/custom_rewards?broadcaster_id=%s&id=%s",
+		helixBase, broadcasterID, rewardID)
+	req, err := http.NewRequest(http.MethodDelete, url, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Client-Id", clientID)
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("twitch: delete custom reward: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNoContent {
+		return nil
+	}
+	body, _ := io.ReadAll(resp.Body)
+	return fmt.Errorf("twitch: delete custom reward status %d: %s", resp.StatusCode, body)
+}
+
+// Redemption represents a viewer's redemption of a custom reward.
+type Redemption struct {
+	ID          string `json:"id"`
+	BroadcasterID   string `json:"broadcaster_id"`
+	UserID      string `json:"user_id"`
+	UserLogin   string `json:"user_login"`
+	UserName    string `json:"user_name"`
+	UserInput   string `json:"user_input"`
+	Status      string `json:"status"`
+	RedeemedAt  string `json:"redeemed_at"`
+	Reward      struct {
+		ID    string `json:"id"`
+		Title string `json:"title"`
+		Cost  int    `json:"cost"`
+	} `json:"reward"`
+}
+
+// GetRedemptions returns redemptions for the given reward filtered by status.
+// status must be one of: UNFULFILLED, FULFILLED, CANCELED.
+// Requires channel:manage:redemptions scope.
+func GetRedemptions(clientID, accessToken, broadcasterID, rewardID, status string) ([]Redemption, error) {
+	url := fmt.Sprintf("%s/channel_points/custom_rewards/redemptions?broadcaster_id=%s&reward_id=%s&status=%s&first=50",
+		helixBase, broadcasterID, rewardID, status)
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Client-Id", clientID)
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("twitch: get redemptions: %w", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("twitch: get redemptions status %d: %s", resp.StatusCode, body)
+	}
+	var payload struct {
+		Data []Redemption `json:"data"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil, fmt.Errorf("twitch: get redemptions decode: %w", err)
+	}
+	return payload.Data, nil
+}
+
+// UpdateRedemptionStatus marks a redemption as FULFILLED or CANCELED.
+// Only UNFULFILLED redemptions can be updated.
+// Requires channel:manage:redemptions scope.
+func UpdateRedemptionStatus(clientID, accessToken, broadcasterID, rewardID, redemptionID, status string) error {
+	b, _ := json.Marshal(map[string]string{"status": status})
+	url := fmt.Sprintf("%s/channel_points/custom_rewards/redemptions?broadcaster_id=%s&reward_id=%s&id=%s",
+		helixBase, broadcasterID, rewardID, redemptionID)
+	req, err := http.NewRequest(http.MethodPatch, url, bytes.NewReader(b))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Client-Id", clientID)
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("twitch: update redemption status: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusOK {
+		return nil
+	}
+	body, _ := io.ReadAll(resp.Body)
+	return fmt.Errorf("twitch: update redemption status %d: %s", resp.StatusCode, body)
+}
 // CreatePollEventSubscription subscribes to channel.poll.begin and channel.poll.end
 // events for the broadcaster using a WebSocket transport.
 func CreatePollEventSubscription(clientID, accessToken, sessionID, broadcasterID string) error {

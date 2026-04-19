@@ -7,6 +7,7 @@ import Settings from './pages/Settings'
 import Polls from './pages/Polls'
 import Raids from './pages/Raids'
 import StreamInfo from './pages/StreamInfo'
+import Rewards from './pages/Rewards'
 import useChatNotification from './hooks/useChatNotification'
 import appLogo from './assets/images/twitch_assistme.png'
 
@@ -41,6 +42,9 @@ export default function App() {
           <NavLink to="/stream-info" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>
             Stream Info
           </NavLink>
+          <NavLink to="/rewards" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>
+            Rewards
+          </NavLink>
           <NavLink to="/settings" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>
             Settings
           </NavLink>
@@ -67,6 +71,7 @@ export default function App() {
           <Route path="/polls" element={<Polls />} />
           <Route path="/raids" element={<Raids />} />
           <Route path="/stream-info" element={<StreamInfo />} />
+          <Route path="/rewards" element={<Rewards />} />
           <Route path="/settings" element={<Settings />} />
         </Routes>
       </main>

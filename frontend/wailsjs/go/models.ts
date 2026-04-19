@@ -100,6 +100,84 @@ export namespace main {
 	        this.tags = source["tags"];
 	    }
 	}
+	export class CreateRewardInput {
+	    title: string;
+	    cost: number;
+	    prompt: string;
+	    isEnabled: boolean;
+	    backgroundColor: string;
+	    isUserInputRequired: boolean;
+	    shouldRedemptionsSkipRequestQueue: boolean;
+	    maxPerStreamEnabled: boolean;
+	    maxPerStream: number;
+	    maxPerUserEnabled: boolean;
+	    maxPerUser: number;
+	    cooldownEnabled: boolean;
+	    cooldownSeconds: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new CreateRewardInput(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.title = source["title"];
+	        this.cost = source["cost"];
+	        this.prompt = source["prompt"];
+	        this.isEnabled = source["isEnabled"];
+	        this.backgroundColor = source["backgroundColor"];
+	        this.isUserInputRequired = source["isUserInputRequired"];
+	        this.shouldRedemptionsSkipRequestQueue = source["shouldRedemptionsSkipRequestQueue"];
+	        this.maxPerStreamEnabled = source["maxPerStreamEnabled"];
+	        this.maxPerStream = source["maxPerStream"];
+	        this.maxPerUserEnabled = source["maxPerUserEnabled"];
+	        this.maxPerUser = source["maxPerUser"];
+	        this.cooldownEnabled = source["cooldownEnabled"];
+	        this.cooldownSeconds = source["cooldownSeconds"];
+	    }
+	}
+	export class CustomRewardDTO {
+	    id: string;
+	    title: string;
+	    prompt: string;
+	    cost: number;
+	    backgroundColor: string;
+	    isEnabled: boolean;
+	    isPaused: boolean;
+	    isInStock: boolean;
+	    isUserInputRequired: boolean;
+	    shouldRedemptionsSkipRequestQueue: boolean;
+	    maxPerStreamEnabled: boolean;
+	    maxPerStream: number;
+	    maxPerUserEnabled: boolean;
+	    maxPerUser: number;
+	    cooldownEnabled: boolean;
+	    cooldownSeconds: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new CustomRewardDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.title = source["title"];
+	        this.prompt = source["prompt"];
+	        this.cost = source["cost"];
+	        this.backgroundColor = source["backgroundColor"];
+	        this.isEnabled = source["isEnabled"];
+	        this.isPaused = source["isPaused"];
+	        this.isInStock = source["isInStock"];
+	        this.isUserInputRequired = source["isUserInputRequired"];
+	        this.shouldRedemptionsSkipRequestQueue = source["shouldRedemptionsSkipRequestQueue"];
+	        this.maxPerStreamEnabled = source["maxPerStreamEnabled"];
+	        this.maxPerStream = source["maxPerStream"];
+	        this.maxPerUserEnabled = source["maxPerUserEnabled"];
+	        this.maxPerUser = source["maxPerUser"];
+	        this.cooldownEnabled = source["cooldownEnabled"];
+	        this.cooldownSeconds = source["cooldownSeconds"];
+	    }
+	}
 	
 	export class PollDTO {
 	    id: string;
@@ -193,6 +271,36 @@ export namespace main {
 	        this.thumbnailURL = source["thumbnailURL"];
 	        this.avatarURL = source["avatarURL"];
 	        this.tags = source["tags"];
+	    }
+	}
+	export class RedemptionDTO {
+	    id: string;
+	    userId: string;
+	    userLogin: string;
+	    userName: string;
+	    userInput: string;
+	    status: string;
+	    redeemedAt: string;
+	    rewardId: string;
+	    rewardTitle: string;
+	    rewardCost: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new RedemptionDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.userId = source["userId"];
+	        this.userLogin = source["userLogin"];
+	        this.userName = source["userName"];
+	        this.userInput = source["userInput"];
+	        this.status = source["status"];
+	        this.redeemedAt = source["redeemedAt"];
+	        this.rewardId = source["rewardId"];
+	        this.rewardTitle = source["rewardTitle"];
+	        this.rewardCost = source["rewardCost"];
 	    }
 	}
 	export class SettingsDTO {
