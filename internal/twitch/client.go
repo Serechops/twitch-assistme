@@ -271,7 +271,7 @@ func GetPolls(clientID, accessToken, broadcasterID string) ([]Poll, error) {
 // CreatePollEventSubscription subscribes to channel.poll.begin and channel.poll.end
 // events for the broadcaster using a WebSocket transport.
 func CreatePollEventSubscription(clientID, accessToken, sessionID, broadcasterID string) error {
-	for _, subType := range []string{"channel.poll.begin", "channel.poll.end"} {
+	for _, subType := range []string{"channel.poll.begin", "channel.poll.progress", "channel.poll.end"} {
 		payload := map[string]interface{}{
 			"type":    subType,
 			"version": "1",

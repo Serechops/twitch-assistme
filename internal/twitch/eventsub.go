@@ -61,10 +61,11 @@ type EventSubClient struct {
 	CooldownMs        int64
 
 	// Callbacks (set before Connect).
-	OnChatMessage func(evt ChatMessageEvent)
-	OnPollBegin   func(evt PollEvent)
-	OnPollEnd     func(evt PollEvent)
-	OnStatus      func(status string)
+	OnChatMessage  func(evt ChatMessageEvent)
+	OnPollBegin    func(evt PollEvent)
+	OnPollProgress func(evt PollEvent)
+	OnPollEnd      func(evt PollEvent)
+	OnStatus       func(status string)
 
 	mu           sync.Mutex
 	conn         *websocket.Conn
@@ -272,9 +273,11 @@ func (c *EventSubClient) runSession(ctx context.Context, wsURL string) (string, 
 			case "channel.chat.message":
 				c.handleChatMessage(frame.Payload)
 			case "channel.poll.begin":
-				c.handlePollEvent(frame.Payload, true)
+				c.handlePollEvent(frame.Payload, "begin")
+			case "channel.poll.progress":
+				c.handlePollEvent(frame.Payload, "progress")
 			case "channel.poll.end":
-				c.handlePollEvent(frame.Payload, false)
+				c.handlePollEvent(frame.Payload, "end")
 			}
 
 		case "revocation":
@@ -313,16 +316,25 @@ func (c *EventSubClient) handleChatMessage(raw json.RawMessage) {
 	}
 }
 
-func (c *EventSubClient) handlePollEvent(raw json.RawMessage, isBegin bool) {
+func (c *EventSubClient) handlePollEvent(raw json.RawMessage, kind string) {
 	var p struct {
 		Event PollEvent `json:"event"`
 	}
 	if err := json.Unmarshal(raw, &p); err != nil {
 		return
 	}
-	if isBegin && c.OnPollBegin != nil {
-		c.OnPollBegin(p.Event)
-	} else if !isBegin && c.OnPollEnd != nil {
-		c.OnPollEnd(p.Event)
+	switch kind {
+	case "begin":
+		if c.OnPollBegin != nil {
+			c.OnPollBegin(p.Event)
+		}
+	case "progress":
+		if c.OnPollProgress != nil {
+			c.OnPollProgress(p.Event)
+		}
+	case "end":
+		if c.OnPollEnd != nil {
+			c.OnPollEnd(p.Event)
+		}
 	}
 }

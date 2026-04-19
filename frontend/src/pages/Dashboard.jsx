@@ -51,10 +51,13 @@ export default function Dashboard({ user, setUser }) {
     const offBegin = EventsOn('poll:begin', evt => {
       setActivePoll({ id: evt.id, title: evt.title, choices: evt.choices, endsAt: evt.ends_at, status: 'ACTIVE' })
     })
+    const offProgress = EventsOn('poll:progress', evt => {
+      setActivePoll(prev => prev ? { ...prev, choices: evt.choices } : prev)
+    })
     const offEnd = EventsOn('poll:end', evt => {
       setActivePoll({ id: evt.id, title: evt.title, choices: evt.choices, endsAt: evt.ended_at, status: evt.status })
     })
-    return () => { offBegin(); offEnd() }
+    return () => { offBegin(); offProgress(); offEnd() }
   }, [])
 
   // Auto-scroll chat feed
@@ -273,7 +276,7 @@ export default function Dashboard({ user, setUser }) {
           )}
           {activePoll.status !== 'ACTIVE' && (
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 10 }}>
-              <button className="btn btn-secondary btn-sm" onClick={() => setActivePoll(null)}>Dismiss</button>
+              <button className="btn btn-secondary btn-sm" onClick={() => setActivePoll(null)}>Clear Poll</button>
             </div>
           )}
         </div>

@@ -395,6 +395,9 @@ func (a *App) ConnectEventSub() error {
 	client.OnPollBegin = func(evt twitch.PollEvent) {
 		runtime.EventsEmit(a.ctx, "poll:begin", evt)
 	}
+	client.OnPollProgress = func(evt twitch.PollEvent) {
+		runtime.EventsEmit(a.ctx, "poll:progress", evt)
+	}
 	client.OnPollEnd = func(evt twitch.PollEvent) {
 		runtime.EventsEmit(a.ctx, "poll:end", evt)
 	}
