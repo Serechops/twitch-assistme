@@ -814,15 +814,15 @@ func DeleteCustomReward(clientID, accessToken, broadcasterID, rewardID string) e
 
 // Redemption represents a viewer's redemption of a custom reward.
 type Redemption struct {
-	ID          string `json:"id"`
-	BroadcasterID   string `json:"broadcaster_id"`
-	UserID      string `json:"user_id"`
-	UserLogin   string `json:"user_login"`
-	UserName    string `json:"user_name"`
-	UserInput   string `json:"user_input"`
-	Status      string `json:"status"`
-	RedeemedAt  string `json:"redeemed_at"`
-	Reward      struct {
+	ID            string `json:"id"`
+	BroadcasterID string `json:"broadcaster_id"`
+	UserID        string `json:"user_id"`
+	UserLogin     string `json:"user_login"`
+	UserName      string `json:"user_name"`
+	UserInput     string `json:"user_input"`
+	Status        string `json:"status"`
+	RedeemedAt    string `json:"redeemed_at"`
+	Reward        struct {
 		ID    string `json:"id"`
 		Title string `json:"title"`
 		Cost  int    `json:"cost"`
@@ -886,6 +886,7 @@ func UpdateRedemptionStatus(clientID, accessToken, broadcasterID, rewardID, rede
 	body, _ := io.ReadAll(resp.Body)
 	return fmt.Errorf("twitch: update redemption status %d: %s", resp.StatusCode, body)
 }
+
 // CreatePollEventSubscription subscribes to channel.poll.begin and channel.poll.end
 // events for the broadcaster using a WebSocket transport.
 func CreatePollEventSubscription(clientID, accessToken, sessionID, broadcasterID string) error {

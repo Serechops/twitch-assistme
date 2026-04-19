@@ -25,6 +25,210 @@ function hexToRgb(hex) {
   return `${r},${g},${b}`
 }
 
+// ── Starter Templates ───────────────────────────────────────────────────────
+
+const REWARD_TEMPLATES = [
+  {
+    emoji: '💧',
+    title: 'Hydrate!',
+    cost: 1,
+    prompt: 'Remind your streamer to drink some water!',
+    isEnabled: true,
+    backgroundColor: '#00897b',
+    isUserInputRequired: false,
+    shouldRedemptionsSkipRequestQueue: true,
+    maxPerStreamEnabled: true,
+    maxPerStream: 5,
+    maxPerUserEnabled: false, maxPerUser: 0,
+    cooldownEnabled: false, cooldownSeconds: 0,
+    tags: ['Auto-fulfill', 'Max/stream'],
+    desc: 'Viewers spend a single point to ping you to drink water. Capped at 5 per stream so it stays fun.',
+  },
+  {
+    emoji: '🎵',
+    title: 'Pick My Song',
+    cost: 500,
+    prompt: 'Suggest a song for me to play! Format: Artist – Title',
+    isEnabled: true,
+    backgroundColor: '#1565c0',
+    isUserInputRequired: true,
+    shouldRedemptionsSkipRequestQueue: false,
+    maxPerStreamEnabled: false, maxPerStream: 0,
+    maxPerUserEnabled: true, maxPerUser: 1,
+    cooldownEnabled: false, cooldownSeconds: 0,
+    tags: ['Input required', 'Max per user'],
+    desc: 'Viewers request a song. Capped to 1 per viewer so the queue stays manageable. You review before accepting.',
+  },
+  {
+    emoji: '🔊',
+    title: 'Sound Alert',
+    cost: 100,
+    prompt: 'Trigger a sound alert on stream!',
+    isEnabled: true,
+    backgroundColor: '#e65100',
+    isUserInputRequired: false,
+    shouldRedemptionsSkipRequestQueue: true,
+    maxPerStreamEnabled: false, maxPerStream: 0,
+    maxPerUserEnabled: false, maxPerUser: 0,
+    cooldownEnabled: true, cooldownSeconds: 60,
+    tags: ['Auto-fulfill', 'Cooldown 60s'],
+    desc: 'Fires a sound FX on stream. 60-second global cooldown prevents spam.',
+  },
+  {
+    emoji: '💬',
+    title: 'TTS Message',
+    cost: 300,
+    prompt: 'Type a message and I\'ll read it out loud on stream!',
+    isEnabled: true,
+    backgroundColor: '#00695c',
+    isUserInputRequired: true,
+    shouldRedemptionsSkipRequestQueue: false,
+    maxPerStreamEnabled: false, maxPerStream: 0,
+    maxPerUserEnabled: false, maxPerUser: 0,
+    cooldownEnabled: true, cooldownSeconds: 30,
+    tags: ['Input required', 'Cooldown 30s'],
+    desc: 'Viewer submits text for you to read aloud. You manually fulfill each one from the queue.',
+  },
+  {
+    emoji: '📷',
+    title: 'Change Camera Angle',
+    cost: 250,
+    prompt: 'Make me switch to a different camera angle for 30 seconds!',
+    isEnabled: true,
+    backgroundColor: '#ad1457',
+    isUserInputRequired: false,
+    shouldRedemptionsSkipRequestQueue: true,
+    maxPerStreamEnabled: false, maxPerStream: 0,
+    maxPerUserEnabled: false, maxPerUser: 0,
+    cooldownEnabled: true, cooldownSeconds: 120,
+    tags: ['Auto-fulfill', 'Cooldown 2 min'],
+    desc: 'Auto-fulfills instantly. 2-minute cooldown keeps your stream layout stable.',
+  },
+  {
+    emoji: '🎮',
+    title: 'Challenge Accepted',
+    cost: 1000,
+    prompt: 'Dare me to do something within reason! I\'ll decide if I accept.',
+    isEnabled: true,
+    backgroundColor: '#c62828',
+    isUserInputRequired: true,
+    shouldRedemptionsSkipRequestQueue: false,
+    maxPerStreamEnabled: true, maxPerStream: 3,
+    maxPerUserEnabled: false, maxPerUser: 0,
+    cooldownEnabled: false, cooldownSeconds: 0,
+    tags: ['Input required', 'Max/stream'],
+    desc: 'High-cost dare with a 3-per-stream cap. You review submissions and can cancel ones you decline.',
+  },
+  {
+    emoji: '⏭️',
+    title: 'Skip Current Song',
+    cost: 200,
+    prompt: 'Skip the current song in the queue!',
+    isEnabled: true,
+    backgroundColor: '#4527a0',
+    isUserInputRequired: false,
+    shouldRedemptionsSkipRequestQueue: true,
+    maxPerStreamEnabled: false, maxPerStream: 0,
+    maxPerUserEnabled: false, maxPerUser: 0,
+    cooldownEnabled: true, cooldownSeconds: 90,
+    tags: ['Auto-fulfill', 'Cooldown 90s'],
+    desc: 'Lets chat vote with their points to skip a song. 90-second cooldown prevents rapid-fire skipping.',
+  },
+  {
+    emoji: '🕹️',
+    title: 'Choose My Next Game',
+    cost: 5000,
+    prompt: 'Name a game for me to play next! (Must be in my library)',
+    isEnabled: true,
+    backgroundColor: '#283593',
+    isUserInputRequired: true,
+    shouldRedemptionsSkipRequestQueue: false,
+    maxPerStreamEnabled: true, maxPerStream: 1,
+    maxPerUserEnabled: false, maxPerUser: 0,
+    cooldownEnabled: false, cooldownSeconds: 0,
+    tags: ['Input required', 'Max/stream: 1'],
+    desc: 'Only redeemable once per stream — whoever gets it first chooses your next game.',
+  },
+  {
+    emoji: '😂',
+    title: 'Timeout Yourself',
+    cost: 500,
+    prompt: 'Put yourself in the timeout chair for 60 seconds!',
+    isEnabled: true,
+    backgroundColor: '#37474f',
+    isUserInputRequired: false,
+    shouldRedemptionsSkipRequestQueue: true,
+    maxPerStreamEnabled: false, maxPerStream: 0,
+    maxPerUserEnabled: true, maxPerUser: 2,
+    cooldownEnabled: false, cooldownSeconds: 0,
+    tags: ['Auto-fulfill', 'Max per user: 2'],
+    desc: 'Comedy reward — viewer "times themselves out". Limit 2 per viewer per stream.',
+  },
+  {
+    emoji: '🌈',
+    title: 'Random Emote Mode',
+    cost: 750,
+    prompt: 'Activate emote-only mode in chat for 60 seconds!',
+    isEnabled: true,
+    backgroundColor: '#6a1b9a',
+    isUserInputRequired: false,
+    shouldRedemptionsSkipRequestQueue: true,
+    maxPerStreamEnabled: false, maxPerStream: 0,
+    maxPerUserEnabled: false, maxPerUser: 0,
+    cooldownEnabled: true, cooldownSeconds: 300,
+    tags: ['Auto-fulfill', 'Cooldown 5 min'],
+    desc: 'Triggers a fun emote-only period. 5-minute cooldown keeps chat readable between activations.',
+  },
+]
+
+// ── Template Gallery ──────────────────────────────────────────────────────────
+
+function TemplateGallery({ onUse }) {
+  return (
+    <div className="rw-tpl-gallery">
+      <p className="rw-tpl-intro">
+        Click <strong>Use</strong> on any template to pre-fill the create form.
+        You can adjust the settings before saving.
+      </p>
+      <div className="rw-tpl-grid">
+        {REWARD_TEMPLATES.map((tpl, i) => {
+          const rgb = hexToRgb(tpl.backgroundColor)
+          return (
+            <div
+              key={i}
+              className="rw-tpl-card"
+              style={{ '--rw-accent': tpl.backgroundColor, '--rw-accent-rgb': rgb }}
+            >
+              <div className="rw-tpl-card-accent" />
+              <div className="rw-tpl-card-body">
+                <div className="rw-tpl-card-header">
+                  <span className="rw-tpl-emoji">{tpl.emoji}</span>
+                  <div className="rw-tpl-title-group">
+                    <span className="rw-tpl-name">{tpl.title}</span>
+                    <span className="rw-tpl-cost">🎁 {tpl.cost.toLocaleString()}</span>
+                  </div>
+                </div>
+                <p className="rw-tpl-desc">{tpl.desc}</p>
+                <div className="rw-tpl-tags">
+                  {tpl.tags.map(tag => (
+                    <span key={tag} className="rw-tpl-tag">{tag}</span>
+                  ))}
+                </div>
+                <button
+                  className="btn btn--sm rw-tpl-use-btn"
+                  onClick={() => onUse(tpl)}
+                >
+                  Use Template
+                </button>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 // ── Default form state ────────────────────────────────────────────────────────
 
 const EMPTY_FORM = {
@@ -416,6 +620,7 @@ export default function Rewards() {
   // form state: null = hidden, 'create' = new, object = editing existing
   const [formMode, setFormMode] = useState(null)
   const [queueReward, setQueueReward] = useState(null)
+  const [showTemplates, setShowTemplates] = useState(false)
 
   const loadRewards = useCallback(async () => {
     setLoading(true)
@@ -433,7 +638,7 @@ export default function Rewards() {
   useEffect(() => { loadRewards() }, [loadRewards])
 
   const handleSave = async (form) => {
-    if (formMode === 'create') {
+    if (formMode === 'create' || (formMode && !formMode.id)) {
       await CreateCustomReward(form)
     } else {
       await UpdateCustomReward(formMode.id, form)
@@ -479,10 +684,16 @@ export default function Rewards() {
         <div className="rw-header-actions">
           <button
             className="btn"
-            onClick={() => { setFormMode('create'); setQueueReward(null) }}
-            disabled={formMode === 'create'}
+            onClick={() => { setFormMode('create'); setQueueReward(null); setShowTemplates(false) }}
+            disabled={formMode === 'create' && !showTemplates}
           >
             + Create Reward
+          </button>
+          <button
+            className={`btn btn--sm${showTemplates ? ' btn--active' : ' btn--secondary'}`}
+            onClick={() => { setShowTemplates(s => !s); setFormMode(null); setQueueReward(null) }}
+          >
+            {showTemplates ? '✕ Templates' : '⚡ Templates'}
           </button>
           <button className="btn btn--secondary btn--sm" onClick={loadRewards}>
             ↺ Refresh
@@ -490,7 +701,18 @@ export default function Rewards() {
         </div>
       </div>
 
-      {formMode !== null && (
+      {showTemplates && (
+        <TemplateGallery
+          onUse={tpl => {
+            setShowTemplates(false)
+            setQueueReward(null)
+            const { emoji, tags, desc, ...formValues } = tpl
+            setFormMode({ ...EMPTY_FORM, ...formValues })
+          }}
+        />
+      )}
+
+      {formMode !== null && !showTemplates && (
         <RewardForm
           initial={formMode === 'create' ? null : formMode}
           onSave={handleSave}

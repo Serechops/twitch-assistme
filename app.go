@@ -1009,24 +1009,24 @@ type CustomRewardDTO struct {
 	IsUserInputRequired               bool `json:"isUserInputRequired"`
 	ShouldRedemptionsSkipRequestQueue bool `json:"shouldRedemptionsSkipRequestQueue"`
 
-	MaxPerStreamEnabled  bool `json:"maxPerStreamEnabled"`
-	MaxPerStream         int  `json:"maxPerStream"`
-	MaxPerUserEnabled    bool `json:"maxPerUserEnabled"`
-	MaxPerUser           int  `json:"maxPerUser"`
-	CooldownEnabled      bool `json:"cooldownEnabled"`
-	CooldownSeconds      int  `json:"cooldownSeconds"`
+	MaxPerStreamEnabled bool `json:"maxPerStreamEnabled"`
+	MaxPerStream        int  `json:"maxPerStream"`
+	MaxPerUserEnabled   bool `json:"maxPerUserEnabled"`
+	MaxPerUser          int  `json:"maxPerUser"`
+	CooldownEnabled     bool `json:"cooldownEnabled"`
+	CooldownSeconds     int  `json:"cooldownSeconds"`
 }
 
 // RedemptionDTO is a viewer's redemption of a custom reward.
 type RedemptionDTO struct {
-	ID         string `json:"id"`
-	UserID     string `json:"userId"`
-	UserLogin  string `json:"userLogin"`
-	UserName   string `json:"userName"`
-	UserInput  string `json:"userInput"`
-	Status     string `json:"status"`
-	RedeemedAt string `json:"redeemedAt"`
-	RewardID   string `json:"rewardId"`
+	ID          string `json:"id"`
+	UserID      string `json:"userId"`
+	UserLogin   string `json:"userLogin"`
+	UserName    string `json:"userName"`
+	UserInput   string `json:"userInput"`
+	Status      string `json:"status"`
+	RedeemedAt  string `json:"redeemedAt"`
+	RewardID    string `json:"rewardId"`
 	RewardTitle string `json:"rewardTitle"`
 	RewardCost  int    `json:"rewardCost"`
 }
@@ -1050,22 +1050,22 @@ type CreateRewardInput struct {
 
 func rewardToDTO(r twitch.CustomReward) CustomRewardDTO {
 	return CustomRewardDTO{
-		ID:              r.ID,
-		Title:           r.Title,
-		Prompt:          r.Prompt,
-		Cost:            r.Cost,
-		BackgroundColor: r.BackgroundColor,
-		IsEnabled:       r.IsEnabled,
-		IsPaused:        r.IsPaused,
-		IsInStock:       r.IsInStock,
+		ID:                                r.ID,
+		Title:                             r.Title,
+		Prompt:                            r.Prompt,
+		Cost:                              r.Cost,
+		BackgroundColor:                   r.BackgroundColor,
+		IsEnabled:                         r.IsEnabled,
+		IsPaused:                          r.IsPaused,
+		IsInStock:                         r.IsInStock,
 		IsUserInputRequired:               r.IsUserInputRequired,
 		ShouldRedemptionsSkipRequestQueue: r.ShouldRedemptionsSkipRequestQueue,
-		MaxPerStreamEnabled: r.MaxPerStreamSetting.IsEnabled,
-		MaxPerStream:        r.MaxPerStreamSetting.MaxPerStream,
-		MaxPerUserEnabled:   r.MaxPerUserPerStreamSetting.IsEnabled,
-		MaxPerUser:          r.MaxPerUserPerStreamSetting.MaxPerUserPerStream,
-		CooldownEnabled:     r.GlobalCooldownSetting.IsEnabled,
-		CooldownSeconds:     r.GlobalCooldownSetting.GlobalCooldownSeconds,
+		MaxPerStreamEnabled:               r.MaxPerStreamSetting.IsEnabled,
+		MaxPerStream:                      r.MaxPerStreamSetting.MaxPerStream,
+		MaxPerUserEnabled:                 r.MaxPerUserPerStreamSetting.IsEnabled,
+		MaxPerUser:                        r.MaxPerUserPerStreamSetting.MaxPerUserPerStream,
+		CooldownEnabled:                   r.GlobalCooldownSetting.IsEnabled,
+		CooldownSeconds:                   r.GlobalCooldownSetting.GlobalCooldownSeconds,
 	}
 }
 
