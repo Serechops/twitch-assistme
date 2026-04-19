@@ -23,7 +23,7 @@ import (
 
 const (
 	twitchRedirectURI = "http://localhost:3333"
-	twitchScopes      = "user:read:chat"
+	twitchScopes      = "user:read:chat channel:manage:polls"
 )
 
 // App is the main application struct bound to the Wails frontend.
@@ -363,6 +363,12 @@ func (a *App) ConnectEventSub() error {
 	client.OnChatMessage = func(evt twitch.ChatMessageEvent) {
 		runtime.EventsEmit(a.ctx, "chat:message", evt)
 	}
+	client.OnPollBegin = func(evt twitch.PollEvent) {
+		runtime.EventsEmit(a.ctx, "poll:begin", evt)
+	}
+	client.OnPollEnd = func(evt twitch.PollEvent) {
+		runtime.EventsEmit(a.ctx, "poll:end", evt)
+	}
 
 	ctx, cancel := context.WithCancel(a.ctx)
 	a.eventSubClient = client
@@ -520,4 +526,95 @@ func (a *App) TestSound() {
 		ChatterUserName:     "TestUser",
 		BroadcasterUserName: "You",
 	})
+}
+
+// ─── Polls ───────────────────────────────────────────────────────────────────
+
+// PollChoiceDTO mirrors twitch.PollChoice for the frontend.
+type PollChoiceDTO struct {
+	ID                 string `json:"id"`
+	Title              string `json:"title"`
+	Votes              int    `json:"votes"`
+	ChannelPointsVotes int    `json:"channelPointsVotes"`
+}
+
+// PollDTO mirrors twitch.Poll for the frontend.
+type PollDTO struct {
+	ID        string          `json:"id"`
+	Title     string          `json:"title"`
+	Choices   []PollChoiceDTO `json:"choices"`
+	Status    string          `json:"status"`
+	Duration  int             `json:"duration"`
+	StartedAt string          `json:"startedAt"`
+	EndedAt   string          `json:"endedAt"`
+}
+
+func pollToDTO(p twitch.Poll) PollDTO {
+	choices := make([]PollChoiceDTO, len(p.Choices))
+	for i, c := range p.Choices {
+		choices[i] = PollChoiceDTO{
+			ID:                 c.ID,
+			Title:              c.Title,
+			Votes:              c.Votes,
+			ChannelPointsVotes: c.ChannelPointsVotes,
+		}
+	}
+	return PollDTO{
+		ID:        p.ID,
+		Title:     p.Title,
+		Choices:   choices,
+		Status:    p.Status,
+		Duration:  p.Duration,
+		StartedAt: p.StartedAt,
+		EndedAt:   p.EndedAt,
+	}
+}
+
+// CreatePoll creates a new channel poll. duration is in seconds (15–1800).
+func (a *App) CreatePoll(title string, choices []string, duration int) (*PollDTO, error) {
+	row, err := a.database.GetAuth()
+	if err != nil || row == nil || row.AccessToken == "" {
+		return nil, fmt.Errorf("not authenticated")
+	}
+	poll, err := twitch.CreatePoll(twitchClientID, row.AccessToken, row.UserID, title, choices, duration)
+	if err != nil {
+		return nil, err
+	}
+	dto := pollToDTO(*poll)
+	return &dto, nil
+}
+
+// EndPoll ends the active poll. Pass showResults=true to display results in chat.
+func (a *App) EndPoll(pollID string, showResults bool) (*PollDTO, error) {
+	row, err := a.database.GetAuth()
+	if err != nil || row == nil || row.AccessToken == "" {
+		return nil, fmt.Errorf("not authenticated")
+	}
+	status := "TERMINATED"
+	if !showResults {
+		status = "ARCHIVED"
+	}
+	poll, err := twitch.EndPoll(twitchClientID, row.AccessToken, row.UserID, pollID, status)
+	if err != nil {
+		return nil, err
+	}
+	dto := pollToDTO(*poll)
+	return &dto, nil
+}
+
+// GetPolls returns recent polls for the authenticated broadcaster.
+func (a *App) GetPolls() ([]PollDTO, error) {
+	row, err := a.database.GetAuth()
+	if err != nil || row == nil || row.AccessToken == "" {
+		return nil, fmt.Errorf("not authenticated")
+	}
+	polls, err := twitch.GetPolls(twitchClientID, row.AccessToken, row.UserID)
+	if err != nil {
+		return nil, err
+	}
+	dtos := make([]PollDTO, len(polls))
+	for i, p := range polls {
+		dtos[i] = pollToDTO(p)
+	}
+	return dtos, nil
 }

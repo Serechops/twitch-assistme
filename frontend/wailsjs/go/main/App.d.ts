@@ -6,9 +6,15 @@ export function ClearCustomSound():Promise<void>;
 
 export function ConnectEventSub():Promise<void>;
 
+export function CreatePoll(arg1:string,arg2:Array<string>,arg3:number):Promise<main.PollDTO>;
+
 export function DisconnectEventSub():Promise<void>;
 
+export function EndPoll(arg1:string,arg2:boolean):Promise<main.PollDTO>;
+
 export function GetConnectionStatus():Promise<string>;
+
+export function GetPolls():Promise<Array<main.PollDTO>>;
 
 export function GetSettings():Promise<main.SettingsDTO>;
 

@@ -10,12 +10,24 @@ export function ConnectEventSub() {
   return window['go']['main']['App']['ConnectEventSub']();
 }
 
+export function CreatePoll(arg1, arg2, arg3) {
+  return window['go']['main']['App']['CreatePoll'](arg1, arg2, arg3);
+}
+
 export function DisconnectEventSub() {
   return window['go']['main']['App']['DisconnectEventSub']();
 }
 
+export function EndPoll(arg1, arg2) {
+  return window['go']['main']['App']['EndPoll'](arg1, arg2);
+}
+
 export function GetConnectionStatus() {
   return window['go']['main']['App']['GetConnectionStatus']();
+}
+
+export function GetPolls() {
+  return window['go']['main']['App']['GetPolls']();
 }
 
 export function GetSettings() {

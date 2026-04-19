@@ -20,6 +20,19 @@ const (
 	StatusConnected    = "connected"
 )
 
+// PollEvent is the parsed event payload from channel.poll.begin and channel.poll.end notifications.
+type PollEvent struct {
+	ID                  string       `json:"id"`
+	BroadcasterUserID   string       `json:"broadcaster_user_id"`
+	BroadcasterUserName string       `json:"broadcaster_user_name"`
+	Title               string       `json:"title"`
+	Choices             []PollChoice `json:"choices"`
+	Status              string       `json:"status"`
+	StartedAt           string       `json:"started_at"`
+	EndedAt             string       `json:"ended_at"`
+	EndsAt              string       `json:"ends_at"`
+}
+
 // ChatMessageEvent is the parsed event payload from channel.chat.message notifications.
 type ChatMessageEvent struct {
 	BroadcasterUserID    string `json:"broadcaster_user_id"`
@@ -49,6 +62,8 @@ type EventSubClient struct {
 
 	// Callbacks (set before Connect).
 	OnChatMessage func(evt ChatMessageEvent)
+	OnPollBegin   func(evt PollEvent)
+	OnPollEnd     func(evt PollEvent)
 	OnStatus      func(status string)
 
 	mu           sync.Mutex
@@ -225,7 +240,15 @@ func (c *EventSubClient) runSession(ctx context.Context, wsURL string) (string, 
 				c.clientID, c.accessToken,
 				p.Session.ID, c.broadcasterID, c.userID,
 			); err != nil {
-				return "", fmt.Errorf("eventsub: subscribe: %w", err)
+				return "", fmt.Errorf("eventsub: subscribe chat: %w", err)
+			}
+			if err := CreatePollEventSubscription(
+				c.clientID, c.accessToken,
+				p.Session.ID, c.broadcasterID,
+			); err != nil {
+				// Poll subscription requires channel:manage:polls scope.
+				// Log but don't fail the entire connection.
+				fmt.Printf("eventsub: poll subscribe warning: %v\n", err)
 			}
 			c.setStatus(StatusConnected)
 
@@ -245,8 +268,13 @@ func (c *EventSubClient) runSession(ctx context.Context, wsURL string) (string, 
 			// Keep reading until the connection closes naturally.
 
 		case "notification":
-			if frame.Metadata.SubscriptionType == "channel.chat.message" {
+			switch frame.Metadata.SubscriptionType {
+			case "channel.chat.message":
 				c.handleChatMessage(frame.Payload)
+			case "channel.poll.begin":
+				c.handlePollEvent(frame.Payload, true)
+			case "channel.poll.end":
+				c.handlePollEvent(frame.Payload, false)
 			}
 
 		case "revocation":
@@ -282,5 +310,19 @@ func (c *EventSubClient) handleChatMessage(raw json.RawMessage) {
 
 	if c.OnChatMessage != nil {
 		c.OnChatMessage(evt)
+	}
+}
+
+func (c *EventSubClient) handlePollEvent(raw json.RawMessage, isBegin bool) {
+	var p struct {
+		Event PollEvent `json:"event"`
+	}
+	if err := json.Unmarshal(raw, &p); err != nil {
+		return
+	}
+	if isBegin && c.OnPollBegin != nil {
+		c.OnPollBegin(p.Event)
+	} else if !isBegin && c.OnPollEnd != nil {
+		c.OnPollEnd(p.Event)
 	}
 }
