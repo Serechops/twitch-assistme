@@ -16,6 +16,15 @@ export default function Dashboard({ user, setUser }) {
   // Poll state
   const [pollTitle, setPollTitle] = useState('')
   const [pollChoices, setPollChoices] = useState(['', ''])
+  const POLL_DURATIONS = [
+    { label: '30s', seconds: 30 },
+    { label: '1m',  seconds: 60 },
+    { label: '2m',  seconds: 120 },
+    { label: '5m',  seconds: 300 },
+    { label: '10m', seconds: 600 },
+    { label: '15m', seconds: 900 },
+    { label: '30m', seconds: 1800 },
+  ]
   const [pollDuration, setPollDuration] = useState(120)
   const [activePoll, setActivePoll] = useState(null)   // PollDTO or EventSub event
   const [pollBusy, setPollBusy] = useState(false)
@@ -122,7 +131,7 @@ export default function Dashboard({ user, setUser }) {
       setActivePoll(poll)
       setPollTitle('')
       setPollChoices(['', ''])
-      setPollDuration(120)
+      setPollDuration(120) // reset to 2 min default
     } catch (e) {
       setPollError(String(e))
     } finally {
@@ -311,18 +320,18 @@ export default function Dashboard({ user, setUser }) {
             )}
           </div>
 
-          <div className="setting-row">
-            <div>
-              <div className="setting-label">Duration</div>
-              <div className="setting-description">How long the poll runs (15 – 1800 seconds).</div>
-            </div>
-            <div className="range-row">
-              <input
-                type="range" min={15} max={1800} step={15}
-                value={pollDuration}
-                onChange={e => setPollDuration(Number(e.target.value))}
-              />
-              <span className="range-val">{pollDuration}s</span>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div className="setting-label">Duration</div>
+            <div className="poll-duration-presets">
+              {POLL_DURATIONS.map(({ label, seconds }) => (
+                <button
+                  key={seconds}
+                  className={`btn btn-sm poll-duration-btn${pollDuration === seconds ? ' poll-duration-btn--active' : ''}`}
+                  onClick={() => setPollDuration(seconds)}
+                >
+                  {label}
+                </button>
+              ))}
             </div>
           </div>
         </div>

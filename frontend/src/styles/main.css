@@ -473,6 +473,33 @@ input[type="range"] { flex: 1; accent-color: var(--accent); cursor: pointer; }
 .poll-status-archived    { background: rgba(255,255,255,0.07); color: var(--text-muted); }
 .poll-status-completed   { background: rgba(0,200,83,0.15); color: var(--green); }
 
+.poll-duration-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.poll-duration-btn {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  border-radius: var(--radius);
+  padding: 5px 14px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.poll-duration-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.poll-duration-btn--active {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
 .text-input {
   width: 100%;
   background: var(--bg-surface);
