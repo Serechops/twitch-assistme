@@ -52,6 +52,39 @@ func GetCurrentUser(clientID, accessToken string) (*UserInfo, error) {
 	return &payload.Data[0], nil
 }
 
+// TokenValidation holds the result of a Twitch token introspection.
+type TokenValidation struct {
+	ClientID  string   `json:"client_id"`
+	Login     string   `json:"login"`
+	UserID    string   `json:"user_id"`
+	Scopes    []string `json:"scopes"`
+	ExpiresIn int      `json:"expires_in"`
+}
+
+// ValidateToken calls the Twitch token introspection endpoint and returns
+// the scopes the token was issued with. Returns an error if the token is invalid.
+func ValidateToken(accessToken string) (*TokenValidation, error) {
+	req, err := http.NewRequest(http.MethodGet, "https://id.twitch.tv/oauth2/validate", nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "OAuth "+accessToken)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("twitch: validate token: %w", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("twitch: validate token status %d: %s", resp.StatusCode, body)
+	}
+	var v TokenValidation
+	if err := json.Unmarshal(body, &v); err != nil {
+		return nil, fmt.Errorf("twitch: validate token decode: %w", err)
+	}
+	return &v, nil
+}
+
 // CreateChatMessageSubscription creates a channel.chat.message EventSub subscription
 // via the WebSocket transport using the provided session ID.
 func CreateChatMessageSubscription(clientID, accessToken, sessionID, broadcasterID, userID string) error {

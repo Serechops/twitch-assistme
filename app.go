@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"ai-ssistme/internal/auth"
@@ -38,6 +39,21 @@ type App struct {
 // NewApp creates a new App instance.
 func NewApp() *App {
 	return &App{}
+}
+
+// hasRequiredScopes returns true if all space-separated required scopes are
+// present in the token's actual scope list.
+func hasRequiredScopes(tokenScopes []string, required string) bool {
+	have := make(map[string]bool, len(tokenScopes))
+	for _, s := range tokenScopes {
+		have[s] = true
+	}
+	for _, s := range strings.Fields(required) {
+		if !have[s] {
+			return false
+		}
+	}
+	return true
 }
 
 func (a *App) startup(ctx context.Context) {
@@ -93,6 +109,15 @@ func (a *App) domReady(ctx context.Context) {
 		}
 		row.ExpiresAt = time.Now().Unix() + int64(tokens.ExpiresIn)
 		_ = a.database.SaveAuth(*row)
+	}
+
+	// Verify the token actually has all required scopes.
+	// A refresh token cannot grant new scopes — if any are missing the user
+	// must re-authorize interactively.
+	if val, verr := twitch.ValidateToken(row.AccessToken); verr != nil || !hasRequiredScopes(val.Scopes, twitchScopes) {
+		_ = a.database.ClearAuth()
+		runtime.EventsEmit(a.ctx, "auth:changed", nil)
+		return
 	}
 
 	// Emit auth:changed so the frontend is in sync with the persisted session.
@@ -182,13 +207,17 @@ func (a *App) StartLogin() (string, error) {
 	if a.database != nil {
 		if row, err := a.database.GetAuth(); err == nil && row != nil && row.RefreshToken != "" {
 			tokens, rerr := auth.RefreshAccessToken(twitchClientID, twitchClientSecret, row.RefreshToken)
-			if rerr != nil {
-				// Log the reason so it's visible in wails dev console.
-				runtime.LogWarningf(a.ctx, "Silent re-auth failed (%v) — falling back to interactive flow", rerr)
-				_ = a.database.ClearAuth()
+			if rerr == nil {
+				// Verify the refreshed token has all required scopes before accepting it.
+				// Refresh tokens cannot grant new scopes added since initial authorization.
+				if val, verr := twitch.ValidateToken(tokens.AccessToken); verr == nil && hasRequiredScopes(val.Scopes, twitchScopes) {
+					return "", a.finishLogin(tokens)
+				}
+				runtime.LogWarningf(a.ctx, "Silent re-auth succeeded but token lacks required scopes — forcing re-authorization")
 			} else {
-				return "", a.finishLogin(tokens)
+				runtime.LogWarningf(a.ctx, "Silent re-auth failed (%v) — falling back to interactive flow", rerr)
 			}
+			_ = a.database.ClearAuth()
 		}
 	}
 
