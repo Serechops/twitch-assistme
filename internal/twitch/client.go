@@ -268,6 +268,264 @@ func GetPolls(clientID, accessToken, broadcasterID string) ([]Poll, error) {
 	return payload.Data, nil
 }
 
+// ─── Raid Types ──────────────────────────────────────────────────────────────
+
+// LiveStream represents a stream returned from the Helix streams API.
+type LiveStream struct {
+	UserID       string   `json:"user_id"`
+	UserLogin    string   `json:"user_login"`
+	UserName     string   `json:"user_name"`
+	GameID       string   `json:"game_id"`
+	GameName     string   `json:"game_name"`
+	Title        string   `json:"title"`
+	ViewerCount  int      `json:"viewer_count"`
+	ThumbnailURL string   `json:"thumbnail_url"`
+	StartedAt    string   `json:"started_at"`
+	Tags         []string `json:"tags"`
+}
+
+// ChannelInfo holds the result from GET /helix/channels.
+type ChannelInfo struct {
+	BroadcasterID    string `json:"broadcaster_id"`
+	BroadcasterLogin string `json:"broadcaster_login"`
+	GameID           string `json:"game_id"`
+	GameName         string `json:"game_name"`
+	Title            string `json:"title"`
+}
+
+// GetFollowedStreams returns live streams from channels the user follows.
+// Requires user:read:follows scope.
+func GetFollowedStreams(clientID, accessToken, userID string, first int) ([]LiveStream, error) {
+	url := fmt.Sprintf("%s/streams/followed?user_id=%s&first=%d", helixBase, userID, first)
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Client-Id", clientID)
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("twitch: get followed streams: %w", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("twitch: get followed streams status %d: %s", resp.StatusCode, body)
+	}
+	var payload struct {
+		Data []LiveStream `json:"data"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil, fmt.Errorf("twitch: get followed streams decode: %w", err)
+	}
+	return payload.Data, nil
+}
+
+// GetStreamsByCategory returns live streams in a given game/category.
+func GetStreamsByCategory(clientID, accessToken, gameID string, first int) ([]LiveStream, error) {
+	url := fmt.Sprintf("%s/streams?game_id=%s&first=%d", helixBase, gameID, first)
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Client-Id", clientID)
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("twitch: get streams by category: %w", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("twitch: get streams by category status %d: %s", resp.StatusCode, body)
+	}
+	var payload struct {
+		Data []LiveStream `json:"data"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil, fmt.Errorf("twitch: get streams by category decode: %w", err)
+	}
+	return payload.Data, nil
+}
+
+// GetChannelInfo returns channel metadata (title, current game) for a broadcaster.
+func GetChannelInfo(clientID, accessToken, broadcasterID string) (*ChannelInfo, error) {
+	url := fmt.Sprintf("%s/channels?broadcaster_id=%s", helixBase, broadcasterID)
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Client-Id", clientID)
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("twitch: get channel info: %w", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("twitch: get channel info status %d: %s", resp.StatusCode, body)
+	}
+	var payload struct {
+		Data []ChannelInfo `json:"data"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil, fmt.Errorf("twitch: get channel info decode: %w", err)
+	}
+	if len(payload.Data) == 0 {
+		return nil, fmt.Errorf("twitch: no channel info returned")
+	}
+	return &payload.Data[0], nil
+}
+
+// SearchLiveChannels searches for live channels matching a query string.
+func SearchLiveChannels(clientID, accessToken, query string, first int) ([]LiveStream, error) {
+	url := fmt.Sprintf("%s/search/channels?query=%s&live_only=true&first=%d",
+		helixBase, query, first)
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Client-Id", clientID)
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("twitch: search live channels: %w", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("twitch: search live channels status %d: %s", resp.StatusCode, body)
+	}
+	// Search Channels returns a different shape — adapt it to LiveStream.
+	var payload struct {
+		Data []struct {
+			ID          string   `json:"id"`
+			DisplayName string   `json:"display_name"`
+			Login       string   `json:"broadcaster_login"`
+			GameName    string   `json:"game_name"`
+			GameID      string   `json:"game_id"`
+			Title       string   `json:"title"`
+			IsLive      bool     `json:"is_live"`
+			StartedAt   string   `json:"started_at"`
+			Thumbnail   string   `json:"thumbnail_url"`
+			Tags        []string `json:"tags"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil, fmt.Errorf("twitch: search live channels decode: %w", err)
+	}
+	streams := make([]LiveStream, 0, len(payload.Data))
+	for _, ch := range payload.Data {
+		if !ch.IsLive {
+			continue
+		}
+		streams = append(streams, LiveStream{
+			UserID:       ch.ID,
+			UserLogin:    ch.Login,
+			UserName:     ch.DisplayName,
+			GameID:       ch.GameID,
+			GameName:     ch.GameName,
+			Title:        ch.Title,
+			ThumbnailURL: ch.Thumbnail,
+			StartedAt:    ch.StartedAt,
+			Tags:         ch.Tags,
+		})
+	}
+	return streams, nil
+}
+
+// GetUserProfileImages fetches profile image URLs for up to 100 user IDs.
+// Returns a map of userID → profileImageURL. Best-effort: errors are non-fatal.
+func GetUserProfileImages(clientID, accessToken string, userIDs []string) (map[string]string, error) {
+	if len(userIDs) == 0 {
+		return map[string]string{}, nil
+	}
+	// Twitch user IDs are numeric so no URL encoding needed.
+	reqURL := helixBase + "/users?id=" + strings.Join(userIDs, "&id=")
+	req, err := http.NewRequest(http.MethodGet, reqURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Client-Id", clientID)
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("twitch: get user profiles: %w", err)
+	}
+	defer resp.Body.Close()
+	body2, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("twitch: get user profiles status %d: %s", resp.StatusCode, body2)
+	}
+	var payload2 struct {
+		Data []struct {
+			ID              string `json:"id"`
+			ProfileImageURL string `json:"profile_image_url"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(body2, &payload2); err != nil {
+		return nil, fmt.Errorf("twitch: get user profiles decode: %w", err)
+	}
+	result := make(map[string]string, len(payload2.Data))
+	for _, u := range payload2.Data {
+		result[u.ID] = u.ProfileImageURL
+	}
+	return result, nil
+}
+
+// StartRaid initiates a raid from the broadcaster to a target channel.
+// Requires channel:manage:raids scope.
+func StartRaid(clientID, accessToken, fromBroadcasterID, toBroadcasterID string) error {
+	url := fmt.Sprintf("%s/raids?from_broadcaster_id=%s&to_broadcaster_id=%s",
+		helixBase, fromBroadcasterID, toBroadcasterID)
+	req, err := http.NewRequest(http.MethodPost, url, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Client-Id", clientID)
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("twitch: start raid: %w", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("twitch: start raid status %d: %s", resp.StatusCode, body)
+	}
+	return nil
+}
+
+// CancelRaid cancels a pending raid initiated by the broadcaster.
+// Requires channel:manage:raids scope.
+func CancelRaid(clientID, accessToken, broadcasterID string) error {
+	url := fmt.Sprintf("%s/raids?broadcaster_id=%s", helixBase, broadcasterID)
+	req, err := http.NewRequest(http.MethodDelete, url, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Client-Id", clientID)
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("twitch: cancel raid: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNoContent {
+		return nil
+	}
+	body, _ := io.ReadAll(resp.Body)
+	return fmt.Errorf("twitch: cancel raid status %d: %s", resp.StatusCode, body)
+}
+
 // CreatePollEventSubscription subscribes to channel.poll.begin and channel.poll.end
 // events for the broadcaster using a WebSocket transport.
 func CreatePollEventSubscription(clientID, accessToken, sessionID, broadcasterID string) error {

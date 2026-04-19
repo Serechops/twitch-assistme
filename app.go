@@ -24,7 +24,7 @@ import (
 
 const (
 	twitchRedirectURI = "http://localhost:3333"
-	twitchScopes      = "user:read:chat channel:manage:polls"
+	twitchScopes      = "user:read:chat channel:manage:polls channel:manage:raids user:read:follows"
 )
 
 // App is the main application struct bound to the Wails frontend.
@@ -762,4 +762,161 @@ func (a *App) SavePollTemplate(name string, title string, choices []string, dura
 // DeletePollTemplate deletes a saved poll template by ID.
 func (a *App) DeletePollTemplate(id int64) error {
 	return a.database.DeletePollTemplate(id)
+}
+
+// ─── Raids ────────────────────────────────────────────────────────────────────
+
+// RaidTargetDTO is a live channel that can be raided.
+type RaidTargetDTO struct {
+	ID           string   `json:"id"`
+	Login        string   `json:"login"`
+	DisplayName  string   `json:"displayName"`
+	GameName     string   `json:"gameName"`
+	Title        string   `json:"title"`
+	ViewerCount  int      `json:"viewerCount"`
+	StartedAt    string   `json:"startedAt"`
+	ThumbnailURL string   `json:"thumbnailURL"`
+	AvatarURL    string   `json:"avatarURL"`
+	Tags         []string `json:"tags"`
+}
+
+func streamToRaidTarget(s twitch.LiveStream) RaidTargetDTO {
+	thumb := strings.NewReplacer("{width}", "320", "{height}", "180").Replace(s.ThumbnailURL)
+	tags := s.Tags
+	if tags == nil {
+		tags = []string{}
+	}
+	return RaidTargetDTO{
+		ID:           s.UserID,
+		Login:        s.UserLogin,
+		DisplayName:  s.UserName,
+		GameName:     s.GameName,
+		Title:        s.Title,
+		ViewerCount:  s.ViewerCount,
+		StartedAt:    s.StartedAt,
+		ThumbnailURL: thumb,
+		Tags:         tags,
+	}
+}
+
+// GetFollowedLiveChannels returns live streams from channels the authenticated user follows.
+func (a *App) GetFollowedLiveChannels() ([]RaidTargetDTO, error) {
+	row, err := a.database.GetAuth()
+	if err != nil || row == nil || row.AccessToken == "" {
+		return nil, fmt.Errorf("not authenticated")
+	}
+	streams, err := twitch.GetFollowedStreams(twitchClientID, row.AccessToken, row.UserID, 100)
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]string, 0, len(streams))
+	for _, s := range streams {
+		if s.UserID != row.UserID {
+			ids = append(ids, s.UserID)
+		}
+	}
+	avatars, _ := twitch.GetUserProfileImages(twitchClientID, row.AccessToken, ids)
+	out := make([]RaidTargetDTO, 0, len(ids))
+	for _, s := range streams {
+		if s.UserID == row.UserID {
+			continue
+		}
+		dto := streamToRaidTarget(s)
+		dto.AvatarURL = avatars[s.UserID]
+		out = append(out, dto)
+	}
+	return out, nil
+}
+
+// GetSameCategoryChannels returns live channels streaming in the same game/category
+// as the authenticated broadcaster. Results are ordered by viewer count (Twitch default).
+func (a *App) GetSameCategoryChannels() ([]RaidTargetDTO, error) {
+	row, err := a.database.GetAuth()
+	if err != nil || row == nil || row.AccessToken == "" {
+		return nil, fmt.Errorf("not authenticated")
+	}
+	info, err := twitch.GetChannelInfo(twitchClientID, row.AccessToken, row.UserID)
+	if err != nil {
+		return nil, err
+	}
+	if info.GameID == "" {
+		return nil, fmt.Errorf("your channel has no category set")
+	}
+	streams, err := twitch.GetStreamsByCategory(twitchClientID, row.AccessToken, info.GameID, 50)
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]string, 0, len(streams))
+	for _, s := range streams {
+		if s.UserID != row.UserID {
+			ids = append(ids, s.UserID)
+		}
+	}
+	avatars, _ := twitch.GetUserProfileImages(twitchClientID, row.AccessToken, ids)
+	out := make([]RaidTargetDTO, 0, len(ids))
+	for _, s := range streams {
+		if s.UserID == row.UserID {
+			continue
+		}
+		dto := streamToRaidTarget(s)
+		dto.AvatarURL = avatars[s.UserID]
+		out = append(out, dto)
+	}
+	return out, nil
+}
+
+// SearchRaidTargets searches for live channels matching a query string.
+func (a *App) SearchRaidTargets(query string) ([]RaidTargetDTO, error) {
+	if query == "" {
+		return []RaidTargetDTO{}, nil
+	}
+	row, err := a.database.GetAuth()
+	if err != nil || row == nil || row.AccessToken == "" {
+		return nil, fmt.Errorf("not authenticated")
+	}
+	streams, err := twitch.SearchLiveChannels(twitchClientID, row.AccessToken, query, 20)
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]string, 0, len(streams))
+	for _, s := range streams {
+		if s.UserID != row.UserID {
+			ids = append(ids, s.UserID)
+		}
+	}
+	avatars, _ := twitch.GetUserProfileImages(twitchClientID, row.AccessToken, ids)
+	out := make([]RaidTargetDTO, 0, len(ids))
+	for _, s := range streams {
+		if s.UserID == row.UserID {
+			continue
+		}
+		dto := streamToRaidTarget(s)
+		dto.AvatarURL = avatars[s.UserID]
+		out = append(out, dto)
+	}
+	return out, nil
+}
+
+// StartRaid initiates a raid to the specified broadcaster ID.
+func (a *App) StartRaid(toBroadcasterID string) error {
+	if toBroadcasterID == "" {
+		return fmt.Errorf("target broadcaster ID is required")
+	}
+	row, err := a.database.GetAuth()
+	if err != nil || row == nil || row.AccessToken == "" {
+		return fmt.Errorf("not authenticated")
+	}
+	if toBroadcasterID == row.UserID {
+		return fmt.Errorf("cannot raid your own channel")
+	}
+	return twitch.StartRaid(twitchClientID, row.AccessToken, row.UserID, toBroadcasterID)
+}
+
+// CancelRaid cancels the broadcaster's pending raid.
+func (a *App) CancelRaid() error {
+	row, err := a.database.GetAuth()
+	if err != nil || row == nil || row.AccessToken == "" {
+		return fmt.Errorf("not authenticated")
+	}
+	return twitch.CancelRaid(twitchClientID, row.AccessToken, row.UserID)
 }

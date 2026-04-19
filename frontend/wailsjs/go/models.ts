@@ -129,6 +129,36 @@ export namespace main {
 	        this.createdAt = source["createdAt"];
 	    }
 	}
+	export class RaidTargetDTO {
+	    id: string;
+	    login: string;
+	    displayName: string;
+	    gameName: string;
+	    title: string;
+	    viewerCount: number;
+	    startedAt: string;
+	    thumbnailURL: string;
+	    avatarURL: string;
+	    tags: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new RaidTargetDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.login = source["login"];
+	        this.displayName = source["displayName"];
+	        this.gameName = source["gameName"];
+	        this.title = source["title"];
+	        this.viewerCount = source["viewerCount"];
+	        this.startedAt = source["startedAt"];
+	        this.thumbnailURL = source["thumbnailURL"];
+	        this.avatarURL = source["avatarURL"];
+	        this.tags = source["tags"];
+	    }
+	}
 	export class SettingsDTO {
 	    soundEnabled: boolean;
 	    soundPath: string;

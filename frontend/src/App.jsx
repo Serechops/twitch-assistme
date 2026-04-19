@@ -5,6 +5,7 @@ import { EventsOn } from '../wailsjs/runtime/runtime'
 import Dashboard from './pages/Dashboard'
 import Settings from './pages/Settings'
 import Polls from './pages/Polls'
+import Raids from './pages/Raids'
 import useChatNotification from './hooks/useChatNotification'
 import appLogo from './assets/images/twitch_assistme.png'
 
@@ -33,6 +34,9 @@ export default function App() {
           <NavLink to="/polls" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>
             Polls
           </NavLink>
+          <NavLink to="/raids" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>
+            Raids
+          </NavLink>
           <NavLink to="/settings" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>
             Settings
           </NavLink>
@@ -57,6 +61,7 @@ export default function App() {
             <Dashboard user={user} setUser={setUser} />
           } />
           <Route path="/polls" element={<Polls />} />
+          <Route path="/raids" element={<Raids />} />
           <Route path="/settings" element={<Settings />} />
         </Routes>
       </main>
