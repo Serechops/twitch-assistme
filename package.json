@@ -8,6 +8,7 @@
     "build": "wails build",
     "build:clean": "wails build -clean",
     "build:debug": "wails build -debug",
-    "preview": "build\\bin\\twitch-assistme.exe"
+    "preview": "build\\bin\\twitch-assistme.exe",
+    "release": "node scripts/release.js"
   }
 }
