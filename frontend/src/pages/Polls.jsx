@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import {
   CreatePoll,
   EndPoll,
+  GetPolls,
   GetPollArchive,
   GetPollTemplates,
   SavePollTemplate,
@@ -391,6 +392,21 @@ export default function Polls() {
   const [pollTitle, setPollTitle] = useState('')
   const [pollChoices, setPollChoices] = useState(['', ''])
   const [pollDuration, setPollDuration] = useState(120)
+
+  // Re-fetch when the AI voice command creates or ends a poll.
+  const fetchActivePoll = useCallback(() => {
+    GetPolls()
+      .then(polls => {
+        const active = (polls || []).find(p => p.status === 'ACTIVE')
+        if (active) setActivePoll(active)
+      })
+      .catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    const off = EventsOn('polls:changed', fetchActivePoll)
+    return () => off()
+  }, [fetchActivePoll])
 
   // Subscribe to EventSub poll events
   useEffect(() => {

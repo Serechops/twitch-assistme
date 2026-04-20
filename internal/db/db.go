@@ -94,6 +94,7 @@ func (d *DB) migrate() error {
 		"chat_sound_volume":       "1.0",
 		"chat_filter_ignore_own":  "true",
 		"chat_filter_cooldown_ms": "0",
+		"openai_api_key":          "",
 	}
 
 	tx, err := d.conn.Begin()

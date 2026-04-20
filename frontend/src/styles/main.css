@@ -363,6 +363,38 @@ input[type="range"] { flex: 1; accent-color: var(--accent); cursor: pointer; }
   font-size: 13px;
 }
 
+/* ─── Sidebar AI voice command hint ─────────────────────────────────────── */
+.sidebar-ai-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  margin: 8px 8px 0;
+  border-radius: 8px;
+  background: rgba(145, 71, 255, 0.08);
+  border: 1px solid rgba(145, 71, 255, 0.2);
+  color: #9a85c8;
+  font-size: 0.72rem;
+  cursor: default;
+  user-select: none;
+}
+.sidebar-ai-hint span {
+  flex: 1;
+  font-weight: 600;
+  color: #b09adf;
+}
+.sidebar-ai-hint kbd {
+  padding: 1px 5px;
+  border: 1px solid rgba(145, 71, 255, 0.3);
+  border-radius: 4px;
+  background: rgba(145, 71, 255, 0.12);
+  font-family: inherit;
+  font-size: 0.68rem;
+  color: #9a85c8;
+  white-space: nowrap;
+}
+
+
 /* ─── Dashboard user-bar fallback avatar ─────────────────────────────────── */
 .user-bar-avatar--fallback {
   background: var(--accent-dim);

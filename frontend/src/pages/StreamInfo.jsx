@@ -1,5 +1,6 @@
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import { GetMyChannelInfo, UpdateChannelInfo, SearchCategories } from '../../wailsjs/go/main/App'
+import { EventsOn } from '../../wailsjs/runtime/runtime'
 
 export default function StreamInfo() {
   const [title, setTitle] = useState('')
@@ -21,18 +22,30 @@ export default function StreamInfo() {
   const [saved, setSaved] = useState(false)
   const [loading, setLoading] = useState(true)
 
+  const applyChannelInfo = useCallback(info => {
+    setTitle(info.title)
+    setGameID(info.gameID)
+    setGameName(info.gameName)
+    setLanguage(info.language || '')
+    setTags(info.tags || [])
+  }, [])
+
   useEffect(() => {
     GetMyChannelInfo()
-      .then(info => {
-        setTitle(info.title)
-        setGameID(info.gameID)
-        setGameName(info.gameName)
-        setLanguage(info.language || '')
-        setTags(info.tags || [])
-      })
+      .then(applyChannelInfo)
       .catch(e => setError(String(e)))
       .finally(() => setLoading(false))
-  }, [])
+  }, [applyChannelInfo])
+
+  // Re-fetch whenever the AI voice command changes stream info.
+  useEffect(() => {
+    const off = EventsOn('streaminfo:changed', () => {
+      GetMyChannelInfo()
+        .then(applyChannelInfo)
+        .catch(() => {})
+    })
+    return () => off()
+  }, [applyChannelInfo])
 
   useEffect(() => {
     if (!categoryQuery.trim()) {

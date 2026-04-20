@@ -8,13 +8,18 @@ import Polls from './pages/Polls'
 import Raids from './pages/Raids'
 import StreamInfo from './pages/StreamInfo'
 import Rewards from './pages/Rewards'
+import Predictions from './pages/Predictions'
+import Tools from './pages/Tools'
 import useChatNotification from './hooks/useChatNotification'
+import useVoiceCommand from './hooks/useVoiceCommand'
+import VoiceCommandOverlay from './components/VoiceCommandOverlay'
 import appLogo from './assets/images/twitch_assistme.png'
 
 export default function App() {
   const [user, setUser] = useState(null)
 
   useChatNotification()
+  const { voiceState, result, error, dismiss, stopAndSubmit, silenceProgress } = useVoiceCommand()
 
   useEffect(() => {
     GetUser().then(u => setUser(u))
@@ -36,8 +41,14 @@ export default function App() {
           <NavLink to="/polls" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>
             Polls
           </NavLink>
+          <NavLink to="/predictions" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>
+            Predictions
+          </NavLink>
           <NavLink to="/raids" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>
             Raids
+          </NavLink>
+          <NavLink to="/tools" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>
+            Tools
           </NavLink>
           <NavLink to="/stream-info" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>
             Stream Info
@@ -61,6 +72,11 @@ export default function App() {
             <div className="sidebar-user-name">@{user.login}</div>
           </div>
         )}
+
+        <div className="sidebar-ai-hint" title="Press Ctrl+Shift+Space to give a voice command">
+          🎙️ <span>AI Voice</span>
+          <kbd>Ctrl+Shift+Space</kbd>
+        </div>
       </nav>
 
       <main className="main-content">
@@ -69,12 +85,24 @@ export default function App() {
             <Dashboard user={user} setUser={setUser} />
           } />
           <Route path="/polls" element={<Polls />} />
+          <Route path="/predictions" element={<Predictions />} />
           <Route path="/raids" element={<Raids />} />
+          <Route path="/tools" element={<Tools />} />
           <Route path="/stream-info" element={<StreamInfo />} />
           <Route path="/rewards" element={<Rewards />} />
           <Route path="/settings" element={<Settings />} />
         </Routes>
       </main>
+
+      <VoiceCommandOverlay
+        voiceState={voiceState}
+        result={result}
+        error={error}
+        dismiss={dismiss}
+        stopAndSubmit={stopAndSubmit}
+        silenceProgress={silenceProgress}
+      />
     </div>
   )
 }
+

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Login, Logout, ConnectEventSub, DisconnectEventSub, GetConnectionStatus, StartLogin, PollLogin } from '../../wailsjs/go/main/App'
+import { Login, Logout, ConnectEventSub, DisconnectEventSub, GetConnectionStatus, StartLogin, PollLogin, GetCreatorGoals, GetHypeTrainEvents } from '../../wailsjs/go/main/App'
 import { EventsOn } from '../../wailsjs/runtime/runtime'
 import useConnectionStatus from '../hooks/useConnectionStatus'
 
@@ -13,10 +13,24 @@ export default function Dashboard({ user, setUser }) {
   const [deviceCode, setDeviceCode] = useState('')  // non-empty = waiting for device activation
   const feedRef = useRef(null)
 
+  const [goals, setGoals] = useState([])
+  const [hypeTrainEvent, setHypeTrainEvent] = useState(null)
+
   // Sync initial connection status
   useEffect(() => {
     GetConnectionStatus()
   }, [])
+
+  // Load stats on mount (only when authenticated)
+  useEffect(() => {
+    if (!user) return
+    GetCreatorGoals()
+      .then(data => setGoals(data || []))
+      .catch(() => setGoals([]))
+    GetHypeTrainEvents()
+      .then(data => setHypeTrainEvent((data && data.length > 0) ? data[0] : null))
+      .catch(() => setHypeTrainEvent(null))
+  }, [user])
 
   // Subscribe to incoming chat messages
   useEffect(() => {
@@ -161,6 +175,75 @@ export default function Dashboard({ user, setUser }) {
           }
         </div>
       </div>
+
+      {/* Creator Goals */}
+      {goals.length > 0 && (
+        <div className="card">
+          <div className="card-title">Creator Goals</div>
+          <div className="settings-group">
+            {goals.map(g => {
+              const pct = g.targetAmount > 0
+                ? Math.min(100, Math.round((g.currentAmount / g.targetAmount) * 100))
+                : 0
+              return (
+                <div key={g.id}>
+                  <div className="poll-choice-header" style={{ marginBottom: 4 }}>
+                    <span className="setting-label" style={{ textTransform: 'capitalize' }}>
+                      {g.description || g.type.replace(/_/g, ' ')}
+                    </span>
+                    <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+                      {g.currentAmount.toLocaleString()} / {g.targetAmount.toLocaleString()} ({pct}%)
+                    </span>
+                  </div>
+                  <div className="poll-bar-track">
+                    <div className="poll-bar-fill" style={{ width: `${pct}%` }} />
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Hype Train */}
+      {hypeTrainEvent && (
+        <div className="card">
+          <div className="card-title">Hype Train</div>
+          <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
+            <div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 2 }}>Level</div>
+              <div style={{ fontSize: 22, fontWeight: 700 }}>
+                {hypeTrainEvent.level}
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 2 }}>Progress</div>
+              <div style={{ fontSize: 16 }}>
+                {hypeTrainEvent.total.toLocaleString()} / {hypeTrainEvent.goal.toLocaleString()}
+              </div>
+            </div>
+            {hypeTrainEvent.expiresAt && (
+              <div>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 2 }}>Expires</div>
+                <div style={{ fontSize: 13 }}>
+                  {new Date(hypeTrainEvent.expiresAt).toLocaleTimeString()}
+                </div>
+              </div>
+            )}
+          </div>
+          {hypeTrainEvent.goal > 0 && (
+            <div className="poll-bar-track" style={{ marginTop: 10 }}>
+              <div
+                className="poll-bar-fill"
+                style={{
+                  width: `${Math.min(100, Math.round((hypeTrainEvent.total / hypeTrainEvent.goal) * 100))}%`,
+                  backgroundColor: 'var(--hype-train, #ff7b2c)',
+                }}
+              />
+            </div>
+          )}
+        </div>
+      )}
     </>
   )
 }

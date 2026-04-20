@@ -26,6 +26,14 @@ export function CreatePoll(arg1, arg2, arg3) {
   return window['go']['main']['App']['CreatePoll'](arg1, arg2, arg3);
 }
 
+export function CreatePrediction(arg1, arg2, arg3) {
+  return window['go']['main']['App']['CreatePrediction'](arg1, arg2, arg3);
+}
+
+export function CreateStreamMarker(arg1) {
+  return window['go']['main']['App']['CreateStreamMarker'](arg1);
+}
+
 export function DeleteCustomReward(arg1) {
   return window['go']['main']['App']['DeleteCustomReward'](arg1);
 }
@@ -42,6 +50,10 @@ export function EndPoll(arg1, arg2) {
   return window['go']['main']['App']['EndPoll'](arg1, arg2);
 }
 
+export function EndPrediction(arg1, arg2, arg3) {
+  return window['go']['main']['App']['EndPrediction'](arg1, arg2, arg3);
+}
+
 export function FulfillRedemption(arg1, arg2) {
   return window['go']['main']['App']['FulfillRedemption'](arg1, arg2);
 }
@@ -50,12 +62,20 @@ export function GetConnectionStatus() {
   return window['go']['main']['App']['GetConnectionStatus']();
 }
 
+export function GetCreatorGoals() {
+  return window['go']['main']['App']['GetCreatorGoals']();
+}
+
 export function GetCustomRewards() {
   return window['go']['main']['App']['GetCustomRewards']();
 }
 
 export function GetFollowedLiveChannels() {
   return window['go']['main']['App']['GetFollowedLiveChannels']();
+}
+
+export function GetHypeTrainEvents() {
+  return window['go']['main']['App']['GetHypeTrainEvents']();
 }
 
 export function GetMyChannelInfo() {
@@ -76,6 +96,10 @@ export function GetPollTemplates() {
 
 export function GetPolls() {
   return window['go']['main']['App']['GetPolls']();
+}
+
+export function GetPredictions() {
+  return window['go']['main']['App']['GetPredictions']();
 }
 
 export function GetSameCategoryChannels() {
@@ -110,6 +134,10 @@ export function PollLogin() {
   return window['go']['main']['App']['PollLogin']();
 }
 
+export function ProcessVoiceCommand(arg1) {
+  return window['go']['main']['App']['ProcessVoiceCommand'](arg1);
+}
+
 export function SaveCustomSound(arg1, arg2) {
   return window['go']['main']['App']['SaveCustomSound'](arg1, arg2);
 }
@@ -128,6 +156,14 @@ export function SearchCategories(arg1) {
 
 export function SearchRaidTargets(arg1) {
   return window['go']['main']['App']['SearchRaidTargets'](arg1);
+}
+
+export function SendAnnouncement(arg1, arg2) {
+  return window['go']['main']['App']['SendAnnouncement'](arg1, arg2);
+}
+
+export function SendShoutout(arg1) {
+  return window['go']['main']['App']['SendShoutout'](arg1);
 }
 
 export function StartLogin() {

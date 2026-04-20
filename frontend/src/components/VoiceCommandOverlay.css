@@ -1,0 +1,216 @@
+/* ─── Voice Command Overlay ─────────────────────────────────────────────── */
+
+.vc-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  animation: vc-fade-in 0.15s ease;
+}
+
+@keyframes vc-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.vc-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 32px 40px;
+  min-width: 320px;
+  max-width: 480px;
+  background: #1a1a2e;
+  border: 1px solid rgba(145, 71, 255, 0.4);
+  border-radius: 16px;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(145, 71, 255, 0.1);
+  text-align: center;
+  animation: vc-slide-up 0.2s ease;
+}
+
+@keyframes vc-slide-up {
+  from { transform: translateY(16px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+
+/* ── Recording state ── */
+
+.vc-mic-wrapper {
+  position: relative;
+  width: 72px;
+  height: 72px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 4px;
+}
+
+.vc-pulse-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 3px solid #9147ff;
+  animation: vc-pulse 1.4s ease-out infinite;
+}
+
+@keyframes vc-pulse {
+  0%   { transform: scale(0.9); opacity: 0.8; }
+  70%  { transform: scale(1.5); opacity: 0; }
+  100% { transform: scale(0.9); opacity: 0; }
+}
+
+.vc-mic-icon {
+  position: absolute;
+  font-size: 2rem;
+  line-height: 1;
+  pointer-events: none;
+}
+
+/* ── Silence countdown arc ── */
+
+.vc-silence-arc {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg); /* start from top */
+}
+
+.vc-silence-arc-track {
+  fill: none;
+  stroke: rgba(145, 71, 255, 0.15);
+  stroke-width: 4;
+}
+
+.vc-silence-arc-fill {
+  fill: none;
+  stroke: #9147ff;
+  stroke-width: 4;
+  stroke-linecap: round;
+}
+
+
+/* ── Spinner (processing) ── */
+
+.vc-spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid rgba(145, 71, 255, 0.2);
+  border-top-color: #9147ff;
+  border-radius: 50%;
+  animation: vc-spin 0.8s linear infinite;
+}
+
+@keyframes vc-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ── Text ── */
+
+.vc-label {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #e0d9f7;
+  margin: 0;
+}
+
+.vc-hint {
+  font-size: 0.8rem;
+  color: #7a6fa0;
+  margin: 0;
+}
+
+.vc-hint kbd {
+  display: inline-block;
+  padding: 1px 5px;
+  border: 1px solid #4a3d6e;
+  border-radius: 4px;
+  background: #2a2040;
+  font-family: inherit;
+  font-size: 0.75rem;
+  color: #b9a8e0;
+}
+
+.vc-transcript {
+  font-size: 0.95rem;
+  color: #b9a8e0;
+  font-style: italic;
+  margin: 0;
+  line-height: 1.4;
+}
+
+.vc-message {
+  font-size: 0.9rem;
+  color: #c8bfdf;
+  margin: 0;
+  line-height: 1.5;
+}
+
+.vc-error-msg {
+  font-size: 0.85rem;
+  color: #f87171;
+  margin: 0;
+  line-height: 1.4;
+}
+
+/* ── Action badges ── */
+
+.vc-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+}
+
+.vc-action-badge {
+  padding: 3px 10px;
+  border-radius: 20px;
+  background: rgba(145, 71, 255, 0.2);
+  border: 1px solid rgba(145, 71, 255, 0.4);
+  color: #c4a9ff;
+  font-size: 0.78rem;
+  font-weight: 500;
+}
+
+/* ── Icons ── */
+
+.vc-icon-success,
+.vc-icon-error {
+  font-size: 2rem;
+}
+
+/* ── Buttons ── */
+
+.vc-stop-btn,
+.vc-dismiss-btn {
+  margin-top: 4px;
+  padding: 8px 24px;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.vc-stop-btn {
+  background: #9147ff;
+  color: #fff;
+}
+
+.vc-dismiss-btn {
+  background: rgba(255, 255, 255, 0.08);
+  color: #c8bfdf;
+}
+
+.vc-stop-btn:hover,
+.vc-dismiss-btn:hover {
+  opacity: 0.85;
+}

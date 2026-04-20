@@ -49,6 +49,37 @@ type ChatMessageEvent struct {
 	MessageType string `json:"message_type"`
 }
 
+// PredictionOutcomeEvent is an outcome in a channel prediction event payload.
+type PredictionOutcomeEvent struct {
+	ID            string `json:"id"`
+	Title         string `json:"title"`
+	Color         string `json:"color"`
+	Users         int    `json:"users"`
+	ChannelPoints int    `json:"channel_points"`
+	TopPredictors []struct {
+		UserID            string `json:"user_id"`
+		UserName          string `json:"user_name"`
+		UserLogin         string `json:"user_login"`
+		ChannelPointsUsed int    `json:"channel_points_used"`
+		ChannelPointsWon  int    `json:"channel_points_won"`
+	} `json:"top_predictors"`
+}
+
+// PredictionEvent is the parsed event payload from channel.prediction.* notifications.
+type PredictionEvent struct {
+	ID                  string                   `json:"id"`
+	BroadcasterUserID   string                   `json:"broadcaster_user_id"`
+	BroadcasterUserName string                   `json:"broadcaster_user_name"`
+	Title               string                   `json:"title"`
+	WinningOutcomeID    string                   `json:"winning_outcome_id"`
+	Outcomes            []PredictionOutcomeEvent `json:"outcomes"`
+	PredictionWindow    int                      `json:"prediction_window"`
+	Status              string                   `json:"status"`
+	StartedAt           string                   `json:"started_at"`
+	LockedAt            string                   `json:"locked_at"`
+	EndedAt             string                   `json:"ended_at"`
+}
+
 // EventSubClient manages the Twitch EventSub WebSocket connection.
 type EventSubClient struct {
 	clientID      string
@@ -61,11 +92,15 @@ type EventSubClient struct {
 	CooldownMs        int64
 
 	// Callbacks (set before Connect).
-	OnChatMessage  func(evt ChatMessageEvent)
-	OnPollBegin    func(evt PollEvent)
-	OnPollProgress func(evt PollEvent)
-	OnPollEnd      func(evt PollEvent)
-	OnStatus       func(status string)
+	OnChatMessage        func(evt ChatMessageEvent)
+	OnPollBegin          func(evt PollEvent)
+	OnPollProgress       func(evt PollEvent)
+	OnPollEnd            func(evt PollEvent)
+	OnPredictionBegin    func(evt PredictionEvent)
+	OnPredictionProgress func(evt PredictionEvent)
+	OnPredictionLock     func(evt PredictionEvent)
+	OnPredictionEnd      func(evt PredictionEvent)
+	OnStatus             func(status string)
 
 	mu           sync.Mutex
 	conn         *websocket.Conn
@@ -251,6 +286,14 @@ func (c *EventSubClient) runSession(ctx context.Context, wsURL string) (string, 
 				// Log but don't fail the entire connection.
 				fmt.Printf("eventsub: poll subscribe warning: %v\n", err)
 			}
+			if err := CreatePredictionEventSubscription(
+				c.clientID, c.accessToken,
+				p.Session.ID, c.broadcasterID,
+			); err != nil {
+				// Prediction subscription requires channel:manage:predictions scope.
+				// Log but don't fail the entire connection.
+				fmt.Printf("eventsub: prediction subscribe warning: %v\n", err)
+			}
 			c.setStatus(StatusConnected)
 
 		case "session_keepalive":
@@ -278,6 +321,14 @@ func (c *EventSubClient) runSession(ctx context.Context, wsURL string) (string, 
 				c.handlePollEvent(frame.Payload, "progress")
 			case "channel.poll.end":
 				c.handlePollEvent(frame.Payload, "end")
+			case "channel.prediction.begin":
+				c.handlePredictionEvent(frame.Payload, "begin")
+			case "channel.prediction.progress":
+				c.handlePredictionEvent(frame.Payload, "progress")
+			case "channel.prediction.lock":
+				c.handlePredictionEvent(frame.Payload, "lock")
+			case "channel.prediction.end":
+				c.handlePredictionEvent(frame.Payload, "end")
 			}
 
 		case "revocation":
@@ -335,6 +386,33 @@ func (c *EventSubClient) handlePollEvent(raw json.RawMessage, kind string) {
 	case "end":
 		if c.OnPollEnd != nil {
 			c.OnPollEnd(p.Event)
+		}
+	}
+}
+
+func (c *EventSubClient) handlePredictionEvent(raw json.RawMessage, kind string) {
+	var p struct {
+		Event PredictionEvent `json:"event"`
+	}
+	if err := json.Unmarshal(raw, &p); err != nil {
+		return
+	}
+	switch kind {
+	case "begin":
+		if c.OnPredictionBegin != nil {
+			c.OnPredictionBegin(p.Event)
+		}
+	case "progress":
+		if c.OnPredictionProgress != nil {
+			c.OnPredictionProgress(p.Event)
+		}
+	case "lock":
+		if c.OnPredictionLock != nil {
+			c.OnPredictionLock(p.Event)
+		}
+	case "end":
+		if c.OnPredictionEnd != nil {
+			c.OnPredictionEnd(p.Event)
 		}
 	}
 }

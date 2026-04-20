@@ -9,6 +9,7 @@ import {
   CancelRedemption,
   ToggleCustomRewardPaused,
 } from '../../wailsjs/go/main/App'
+import { EventsOn } from '../../wailsjs/runtime/runtime'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -636,6 +637,12 @@ export default function Rewards() {
   }, [])
 
   useEffect(() => { loadRewards() }, [loadRewards])
+
+  // Re-fetch when the AI voice command creates or modifies a reward.
+  useEffect(() => {
+    const off = EventsOn('rewards:changed', loadRewards)
+    return () => off()
+  }, [loadRewards])
 
   const handleSave = async (form) => {
     if (formMode === 'create' || (formMode && !formMode.id)) {

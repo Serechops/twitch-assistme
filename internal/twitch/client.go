@@ -52,6 +52,38 @@ func GetCurrentUser(clientID, accessToken string) (*UserInfo, error) {
 	return &payload.Data[0], nil
 }
 
+// GetUserByLogin fetches a Twitch user's profile by their login name.
+func GetUserByLogin(clientID, accessToken, login string) (*UserInfo, error) {
+	req, err := http.NewRequest(http.MethodGet, helixBase+"/users?login="+login, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Client-Id", clientID)
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("twitch: get user by login: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("twitch: get user by login status %d: %s", resp.StatusCode, body)
+	}
+
+	var payload struct {
+		Data []UserInfo `json:"data"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil, fmt.Errorf("twitch: get user by login decode: %w", err)
+	}
+	if len(payload.Data) == 0 {
+		return nil, fmt.Errorf("twitch: user not found: %s", login)
+	}
+	return &payload.Data[0], nil
+}
+
 // TokenValidation holds the result of a Twitch token introspection.
 type TokenValidation struct {
 	ClientID  string   `json:"client_id"`
@@ -922,4 +954,385 @@ func CreatePollEventSubscription(clientID, accessToken, sessionID, broadcasterID
 		}
 	}
 	return nil
+}
+
+// ─── Predictions ─────────────────────────────────────────────────────────────
+
+// PredictionOutcome is a single outcome in a channel prediction.
+type PredictionOutcome struct {
+	ID            string `json:"id"`
+	Title         string `json:"title"`
+	Color         string `json:"color"`
+	Users         int    `json:"users"`
+	ChannelPoints int    `json:"channel_points"`
+	TopPredictors []struct {
+		UserID            string `json:"user_id"`
+		UserName          string `json:"user_name"`
+		UserLogin         string `json:"user_login"`
+		ChannelPointsUsed int    `json:"channel_points_used"`
+		ChannelPointsWon  int    `json:"channel_points_won"`
+	} `json:"top_predictors"`
+}
+
+// Prediction represents a Twitch channel prediction.
+type Prediction struct {
+	ID               string              `json:"id"`
+	BroadcasterID    string              `json:"broadcaster_id"`
+	BroadcasterName  string              `json:"broadcaster_name"`
+	Title            string              `json:"title"`
+	WinningOutcomeID string              `json:"winning_outcome_id"`
+	Outcomes         []PredictionOutcome `json:"outcomes"`
+	PredictionWindow int                 `json:"prediction_window"`
+	Status           string              `json:"status"`
+	CreatedAt        string              `json:"created_at"`
+	EndedAt          string              `json:"ended_at"`
+	LockedAt         string              `json:"locked_at"`
+}
+
+// GetPredictions returns recent predictions for the broadcaster (newest first).
+// Requires channel:manage:predictions scope.
+func GetPredictions(clientID, accessToken, broadcasterID string) ([]Prediction, error) {
+	req, err := http.NewRequest(http.MethodGet, helixBase+"/predictions?broadcaster_id="+broadcasterID, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Client-Id", clientID)
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("twitch: get predictions: %w", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("twitch: get predictions status %d: %s", resp.StatusCode, body)
+	}
+	var payload struct {
+		Data []Prediction `json:"data"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil, fmt.Errorf("twitch: get predictions decode: %w", err)
+	}
+	return payload.Data, nil
+}
+
+// CreatePrediction creates a new channel prediction.
+// outcomes must have 2–10 items; window is in seconds (30–1800).
+// Requires channel:manage:predictions scope.
+func CreatePrediction(clientID, accessToken, broadcasterID, title string, outcomes []string, window int) (*Prediction, error) {
+	outcomeList := make([]map[string]string, len(outcomes))
+	for i, o := range outcomes {
+		outcomeList[i] = map[string]string{"title": o}
+	}
+	b, _ := json.Marshal(map[string]interface{}{
+		"broadcaster_id":    broadcasterID,
+		"title":             title,
+		"outcomes":          outcomeList,
+		"prediction_window": window,
+	})
+	req, err := http.NewRequest(http.MethodPost, helixBase+"/predictions", bytes.NewReader(b))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Client-Id", clientID)
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("twitch: create prediction: %w", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("twitch: create prediction status %d: %s", resp.StatusCode, body)
+	}
+	var payload struct {
+		Data []Prediction `json:"data"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil, fmt.Errorf("twitch: create prediction decode: %w", err)
+	}
+	if len(payload.Data) == 0 {
+		return nil, fmt.Errorf("twitch: create prediction: no data returned")
+	}
+	return &payload.Data[0], nil
+}
+
+// EndPrediction resolves, cancels, or locks a prediction.
+// status must be "RESOLVED", "CANCELED", or "LOCKED".
+// winningOutcomeID is required when status is "RESOLVED".
+// Requires channel:manage:predictions scope.
+func EndPrediction(clientID, accessToken, broadcasterID, predictionID, status, winningOutcomeID string) (*Prediction, error) {
+	body := map[string]interface{}{
+		"broadcaster_id": broadcasterID,
+		"id":             predictionID,
+		"status":         status,
+	}
+	if winningOutcomeID != "" {
+		body["winning_outcome_id"] = winningOutcomeID
+	}
+	b, _ := json.Marshal(body)
+	req, err := http.NewRequest(http.MethodPatch, helixBase+"/predictions", bytes.NewReader(b))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Client-Id", clientID)
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("twitch: end prediction: %w", err)
+	}
+	defer resp.Body.Close()
+	respBody, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("twitch: end prediction status %d: %s", resp.StatusCode, respBody)
+	}
+	var payload struct {
+		Data []Prediction `json:"data"`
+	}
+	if err := json.Unmarshal(respBody, &payload); err != nil {
+		return nil, fmt.Errorf("twitch: end prediction decode: %w", err)
+	}
+	if len(payload.Data) == 0 {
+		return nil, fmt.Errorf("twitch: end prediction: no data returned")
+	}
+	return &payload.Data[0], nil
+}
+
+// CreatePredictionEventSubscription subscribes to channel.prediction.* EventSub events.
+// Requires channel:manage:predictions scope.
+func CreatePredictionEventSubscription(clientID, accessToken, sessionID, broadcasterID string) error {
+	for _, subType := range []string{
+		"channel.prediction.begin",
+		"channel.prediction.progress",
+		"channel.prediction.lock",
+		"channel.prediction.end",
+	} {
+		payload := map[string]interface{}{
+			"type":    subType,
+			"version": "1",
+			"condition": map[string]string{
+				"broadcaster_user_id": broadcasterID,
+			},
+			"transport": map[string]string{
+				"method":     "websocket",
+				"session_id": sessionID,
+			},
+		}
+		data, _ := json.Marshal(payload)
+		req, err := http.NewRequest(http.MethodPost, helixBase+"/eventsub/subscriptions", strings.NewReader(string(data)))
+		if err != nil {
+			return err
+		}
+		req.Header.Set("Client-Id", clientID)
+		req.Header.Set("Authorization", "Bearer "+accessToken)
+		req.Header.Set("Content-Type", "application/json")
+
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			return fmt.Errorf("twitch: create %s subscription: %w", subType, err)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusAccepted && resp.StatusCode != http.StatusOK {
+			return fmt.Errorf("twitch: create %s subscription status %d: %s", subType, resp.StatusCode, body)
+		}
+	}
+	return nil
+}
+
+// ─── Chat Tools ───────────────────────────────────────────────────────────────
+
+// SendAnnouncement sends a chat announcement in the broadcaster's channel.
+// color must be one of: blue, green, orange, purple, primary (empty string defaults to primary).
+// Requires moderator:manage:announcements scope.
+func SendAnnouncement(clientID, accessToken, broadcasterID, moderatorID, message, color string) error {
+	if color == "" {
+		color = "primary"
+	}
+	b, _ := json.Marshal(map[string]string{
+		"message": message,
+		"color":   color,
+	})
+	url := fmt.Sprintf("%s/chat/announcements?broadcaster_id=%s&moderator_id=%s",
+		helixBase, broadcasterID, moderatorID)
+	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(b))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Client-Id", clientID)
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("twitch: send announcement: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNoContent {
+		return nil
+	}
+	body, _ := io.ReadAll(resp.Body)
+	return fmt.Errorf("twitch: send announcement status %d: %s", resp.StatusCode, body)
+}
+
+// SendShoutout sends a shoutout from one broadcaster to another.
+// Requires moderator:manage:shoutouts scope.
+func SendShoutout(clientID, accessToken, fromBroadcasterID, toBroadcasterID, moderatorID string) error {
+	url := fmt.Sprintf("%s/chat/shoutouts?from_broadcaster_id=%s&to_broadcaster_id=%s&moderator_id=%s",
+		helixBase, fromBroadcasterID, toBroadcasterID, moderatorID)
+	req, err := http.NewRequest(http.MethodPost, url, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Client-Id", clientID)
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("twitch: send shoutout: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNoContent {
+		return nil
+	}
+	body, _ := io.ReadAll(resp.Body)
+	return fmt.Errorf("twitch: send shoutout status %d: %s", resp.StatusCode, body)
+}
+
+// ─── Stream Markers ───────────────────────────────────────────────────────────
+
+// CreateStreamMarker creates a marker in a live stream VOD at the current timestamp.
+// description is optional (≤140 chars). Only works when the broadcaster is live
+// and has VOD recording enabled.
+// Requires channel:manage:broadcast scope.
+func CreateStreamMarker(clientID, accessToken, userID, description string) error {
+	body := map[string]string{"user_id": userID}
+	if description != "" {
+		body["description"] = description
+	}
+	b, _ := json.Marshal(body)
+	req, err := http.NewRequest(http.MethodPost, helixBase+"/streams/markers", bytes.NewReader(b))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Client-Id", clientID)
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("twitch: create stream marker: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusOK {
+		return nil
+	}
+	respBody, _ := io.ReadAll(resp.Body)
+	return fmt.Errorf("twitch: create stream marker status %d: %s", resp.StatusCode, respBody)
+}
+
+// ─── Creator Goals ────────────────────────────────────────────────────────────
+
+// CreatorGoal represents a Twitch creator goal.
+type CreatorGoal struct {
+	ID              string `json:"id"`
+	BroadcasterID   string `json:"broadcaster_id"`
+	BroadcasterName string `json:"broadcaster_name"`
+	Type            string `json:"type"`
+	Description     string `json:"description"`
+	CurrentAmount   int    `json:"current_amount"`
+	TargetAmount    int    `json:"target_amount"`
+	CreatedAt       string `json:"created_at"`
+}
+
+// GetCreatorGoals returns active creator goals for the broadcaster.
+// Requires channel:read:goals scope.
+func GetCreatorGoals(clientID, accessToken, broadcasterID string) ([]CreatorGoal, error) {
+	req, err := http.NewRequest(http.MethodGet, helixBase+"/goals?broadcaster_id="+broadcasterID, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Client-Id", clientID)
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("twitch: get creator goals: %w", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("twitch: get creator goals status %d: %s", resp.StatusCode, body)
+	}
+	var payload struct {
+		Data []CreatorGoal `json:"data"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil, fmt.Errorf("twitch: get creator goals decode: %w", err)
+	}
+	return payload.Data, nil
+}
+
+// ─── Hype Train ───────────────────────────────────────────────────────────────
+
+// HypeTrainContribution is a top contribution in a hype train event.
+type HypeTrainContribution struct {
+	Total  int    `json:"total"`
+	Type   string `json:"type"`
+	UserID string `json:"user"`
+}
+
+// HypeTrainEvent represents a hype train event from the Helix API.
+type HypeTrainEvent struct {
+	ID            string `json:"id"`
+	BroadcasterID string `json:"broadcaster_id"`
+	EventData     struct {
+		BroadcasterID    string                  `json:"broadcaster_id"`
+		CooldownEndTime  string                  `json:"cooldown_end_time"`
+		ExpiresAt        string                  `json:"expires_at"`
+		Goal             int                     `json:"goal"`
+		ID               string                  `json:"id"`
+		LastContribution HypeTrainContribution   `json:"last_contribution"`
+		Level            int                     `json:"level"`
+		StartedAt        string                  `json:"started_at"`
+		TopContributions []HypeTrainContribution `json:"top_contributions"`
+		Total            int                     `json:"total"`
+	} `json:"event_data"`
+	EventType      string `json:"event_type"`
+	EventTimestamp string `json:"event_timestamp"`
+	Version        string `json:"version"`
+}
+
+// GetHypeTrainEvents returns the most recent hype train events for the broadcaster.
+// Requires channel:read:hype_train scope.
+func GetHypeTrainEvents(clientID, accessToken, broadcasterID string) ([]HypeTrainEvent, error) {
+	url := fmt.Sprintf("%s/hypetrain/events?broadcaster_id=%s&first=1", helixBase, broadcasterID)
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Client-Id", clientID)
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("twitch: get hype train events: %w", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("twitch: get hype train events status %d: %s", resp.StatusCode, body)
+	}
+	var payload struct {
+		Data []HypeTrainEvent `json:"data"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil, fmt.Errorf("twitch: get hype train events decode: %w", err)
+	}
+	return payload.Data, nil
 }

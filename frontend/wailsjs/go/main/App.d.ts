@@ -14,6 +14,10 @@ export function CreateCustomReward(arg1:main.CreateRewardInput):Promise<main.Cus
 
 export function CreatePoll(arg1:string,arg2:Array<string>,arg3:number):Promise<main.PollDTO>;
 
+export function CreatePrediction(arg1:string,arg2:Array<string>,arg3:number):Promise<main.PredictionDTO>;
+
+export function CreateStreamMarker(arg1:string):Promise<void>;
+
 export function DeleteCustomReward(arg1:string):Promise<void>;
 
 export function DeletePollTemplate(arg1:number):Promise<void>;
@@ -22,13 +26,19 @@ export function DisconnectEventSub():Promise<void>;
 
 export function EndPoll(arg1:string,arg2:boolean):Promise<main.PollDTO>;
 
+export function EndPrediction(arg1:string,arg2:string,arg3:string):Promise<main.PredictionDTO>;
+
 export function FulfillRedemption(arg1:string,arg2:string):Promise<void>;
 
 export function GetConnectionStatus():Promise<string>;
 
+export function GetCreatorGoals():Promise<Array<main.CreatorGoalDTO>>;
+
 export function GetCustomRewards():Promise<Array<main.CustomRewardDTO>>;
 
 export function GetFollowedLiveChannels():Promise<Array<main.RaidTargetDTO>>;
+
+export function GetHypeTrainEvents():Promise<Array<main.HypeTrainEventDTO>>;
 
 export function GetMyChannelInfo():Promise<main.ChannelInfoDTO>;
 
@@ -39,6 +49,8 @@ export function GetPollArchive():Promise<Array<main.ArchivedPollDTO>>;
 export function GetPollTemplates():Promise<Array<main.PollTemplateDTO>>;
 
 export function GetPolls():Promise<Array<main.PollDTO>>;
+
+export function GetPredictions():Promise<Array<main.PredictionDTO>>;
 
 export function GetSameCategoryChannels():Promise<Array<main.RaidTargetDTO>>;
 
@@ -56,6 +68,8 @@ export function Logout():Promise<void>;
 
 export function PollLogin():Promise<void>;
 
+export function ProcessVoiceCommand(arg1:string):Promise<main.AICommandResultDTO>;
+
 export function SaveCustomSound(arg1:string,arg2:string):Promise<void>;
 
 export function SavePollTemplate(arg1:string,arg2:string,arg3:Array<string>,arg4:number):Promise<void>;
@@ -65,6 +79,10 @@ export function SaveSettings(arg1:main.SettingsDTO):Promise<void>;
 export function SearchCategories(arg1:string):Promise<Array<main.CategoryDTO>>;
 
 export function SearchRaidTargets(arg1:string):Promise<Array<main.RaidTargetDTO>>;
+
+export function SendAnnouncement(arg1:string,arg2:string):Promise<void>;
+
+export function SendShoutout(arg1:string):Promise<void>;
 
 export function StartLogin():Promise<string>;
 

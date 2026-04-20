@@ -1,5 +1,21 @@
 export namespace main {
 	
+	export class AICommandResultDTO {
+	    transcript: string;
+	    message: string;
+	    actions: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new AICommandResultDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.transcript = source["transcript"];
+	        this.message = source["message"];
+	        this.actions = source["actions"];
+	    }
+	}
 	export class PollChoiceDTO {
 	    id: string;
 	    title: string;
@@ -136,6 +152,28 @@ export namespace main {
 	        this.cooldownSeconds = source["cooldownSeconds"];
 	    }
 	}
+	export class CreatorGoalDTO {
+	    id: string;
+	    type: string;
+	    description: string;
+	    currentAmount: number;
+	    targetAmount: number;
+	    createdAt: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new CreatorGoalDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.type = source["type"];
+	        this.description = source["description"];
+	        this.currentAmount = source["currentAmount"];
+	        this.targetAmount = source["targetAmount"];
+	        this.createdAt = source["createdAt"];
+	    }
+	}
 	export class CustomRewardDTO {
 	    id: string;
 	    title: string;
@@ -176,6 +214,26 @@ export namespace main {
 	        this.maxPerUser = source["maxPerUser"];
 	        this.cooldownEnabled = source["cooldownEnabled"];
 	        this.cooldownSeconds = source["cooldownSeconds"];
+	    }
+	}
+	export class HypeTrainEventDTO {
+	    level: number;
+	    total: number;
+	    goal: number;
+	    startedAt: string;
+	    expiresAt: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new HypeTrainEventDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.level = source["level"];
+	        this.total = source["total"];
+	        this.goal = source["goal"];
+	        this.startedAt = source["startedAt"];
+	        this.expiresAt = source["expiresAt"];
 	    }
 	}
 	
@@ -243,6 +301,73 @@ export namespace main {
 	        this.createdAt = source["createdAt"];
 	    }
 	}
+	export class PredictionOutcomeDTO {
+	    id: string;
+	    title: string;
+	    color: string;
+	    users: number;
+	    channelPoints: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new PredictionOutcomeDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.title = source["title"];
+	        this.color = source["color"];
+	        this.users = source["users"];
+	        this.channelPoints = source["channelPoints"];
+	    }
+	}
+	export class PredictionDTO {
+	    id: string;
+	    title: string;
+	    winningOutcomeId: string;
+	    outcomes: PredictionOutcomeDTO[];
+	    predictionWindow: number;
+	    status: string;
+	    createdAt: string;
+	    endedAt: string;
+	    lockedAt: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new PredictionDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.title = source["title"];
+	        this.winningOutcomeId = source["winningOutcomeId"];
+	        this.outcomes = this.convertValues(source["outcomes"], PredictionOutcomeDTO);
+	        this.predictionWindow = source["predictionWindow"];
+	        this.status = source["status"];
+	        this.createdAt = source["createdAt"];
+	        this.endedAt = source["endedAt"];
+	        this.lockedAt = source["lockedAt"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
 	export class RaidTargetDTO {
 	    id: string;
 	    login: string;
@@ -309,6 +434,7 @@ export namespace main {
 	    soundVolume: number;
 	    ignoreOwn: boolean;
 	    cooldownMs: number;
+	    openAIApiKey: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new SettingsDTO(source);
@@ -321,6 +447,7 @@ export namespace main {
 	        this.soundVolume = source["soundVolume"];
 	        this.ignoreOwn = source["ignoreOwn"];
 	        this.cooldownMs = source["cooldownMs"];
+	        this.openAIApiKey = source["openAIApiKey"];
 	    }
 	}
 	export class UserInfo {

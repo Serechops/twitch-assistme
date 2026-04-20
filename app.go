@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"ai-ssistme/internal/ai"
 	"ai-ssistme/internal/auth"
 	"ai-ssistme/internal/db"
 	twitch "ai-ssistme/internal/twitch"
@@ -24,7 +25,7 @@ import (
 
 const (
 	twitchRedirectURI = "http://localhost:3333"
-	twitchScopes      = "user:read:chat channel:manage:polls channel:manage:raids user:read:follows channel:manage:broadcast channel:manage:redemptions"
+	twitchScopes      = "user:read:chat channel:manage:polls channel:manage:raids user:read:follows channel:manage:broadcast channel:manage:redemptions channel:manage:predictions moderator:manage:announcements moderator:manage:shoutouts channel:read:goals channel:read:hype_train"
 )
 
 // App is the main application struct bound to the Wails frontend.
@@ -34,6 +35,8 @@ type App struct {
 
 	eventSubClient *twitch.EventSubClient
 	eventSubCancel context.CancelFunc
+
+	aiProcessor *ai.Processor
 }
 
 // NewApp creates a new App instance.
@@ -417,6 +420,18 @@ func (a *App) ConnectEventSub() error {
 			})
 		}
 	}
+	client.OnPredictionBegin = func(evt twitch.PredictionEvent) {
+		runtime.EventsEmit(a.ctx, "prediction:begin", evt)
+	}
+	client.OnPredictionProgress = func(evt twitch.PredictionEvent) {
+		runtime.EventsEmit(a.ctx, "prediction:progress", evt)
+	}
+	client.OnPredictionLock = func(evt twitch.PredictionEvent) {
+		runtime.EventsEmit(a.ctx, "prediction:lock", evt)
+	}
+	client.OnPredictionEnd = func(evt twitch.PredictionEvent) {
+		runtime.EventsEmit(a.ctx, "prediction:end", evt)
+	}
 
 	ctx, cancel := context.WithCancel(a.ctx)
 	a.eventSubClient = client
@@ -453,6 +468,7 @@ type SettingsDTO struct {
 	SoundVolume  float64 `json:"soundVolume"`
 	IgnoreOwn    bool    `json:"ignoreOwn"`
 	CooldownMs   int64   `json:"cooldownMs"`
+	OpenAIAPIKey string  `json:"openAIApiKey"`
 }
 
 // GetSettings loads current settings from the database.
@@ -482,6 +498,7 @@ func (a *App) GetSettings() SettingsDTO {
 		SoundVolume:  getFloat("chat_sound_volume"),
 		IgnoreOwn:    getBool("chat_filter_ignore_own"),
 		CooldownMs:   getInt64("chat_filter_cooldown_ms"),
+		OpenAIAPIKey: getString("openai_api_key"),
 	}
 }
 
@@ -499,11 +516,22 @@ func (a *App) SaveSettings(s SettingsDTO) error {
 		"chat_sound_volume":       strconv.FormatFloat(s.SoundVolume, 'f', 2, 64),
 		"chat_filter_ignore_own":  boolStr(s.IgnoreOwn),
 		"chat_filter_cooldown_ms": strconv.FormatInt(s.CooldownMs, 10),
+		"openai_api_key":          s.OpenAIAPIKey,
 	}
+
+	// Read old key before saving so we can detect a change.
+	oldKey, _ := a.database.GetSetting("openai_api_key")
+
 	for k, v := range saves {
 		if err := a.database.SaveSetting(k, v); err != nil {
 			return err
 		}
+	}
+
+	// If the API key changed, discard the cached processor so it re-initialises
+	// with the new key on the next voice command.
+	if oldKey != s.OpenAIAPIKey {
+		a.aiProcessor = nil
 	}
 
 	// Apply filter changes to running client without reconnecting.
@@ -1210,4 +1238,363 @@ func (a *App) CancelRedemption(rewardID, redemptionID string) error {
 		return fmt.Errorf("not authenticated")
 	}
 	return twitch.UpdateRedemptionStatus(twitchClientID, row.AccessToken, row.UserID, rewardID, redemptionID, "CANCELED")
+}
+
+// ─── AI Voice Commands ────────────────────────────────────────────────────────
+
+// AICommandResultDTO is the result of an AI voice command returned to the frontend.
+type AICommandResultDTO struct {
+	Transcript string   `json:"transcript"`
+	Message    string   `json:"message"`
+	Actions    []string `json:"actions"`
+}
+
+// getAIProcessor lazily constructs the AI processor, wiring Twitch action handlers.
+func (a *App) getAIProcessor() (*ai.Processor, error) {
+	apiKey, _ := a.database.GetSetting("openai_api_key")
+	if apiKey == "" {
+		return nil, fmt.Errorf("no OpenAI API key configured — add yours in Settings → AI Voice Commands")
+	}
+	if a.aiProcessor != nil {
+		return a.aiProcessor, nil
+	}
+	a.aiProcessor = ai.NewProcessor(apiKey, ai.ActionHandlers{
+		CreatePoll: func(title string, choices []string, durationSecs int) error {
+			_, err := a.CreatePoll(title, choices, durationSecs)
+			return err
+		},
+		StartRaidByLogin: func(channelLogin string) error {
+			row, err := a.database.GetAuth()
+			if err != nil || row == nil || row.AccessToken == "" {
+				return fmt.Errorf("not authenticated")
+			}
+			user, err := twitch.GetUserByLogin(twitchClientID, row.AccessToken, channelLogin)
+			if err != nil {
+				return err
+			}
+			return a.StartRaid(user.ID)
+		},
+		CancelRaid: func() error {
+			return a.CancelRaid()
+		},
+		EndActivePoll: func() error {
+			polls, err := a.GetPolls()
+			if err != nil {
+				return err
+			}
+			for _, p := range polls {
+				if p.Status == "ACTIVE" {
+					_, err := a.EndPoll(p.ID, true)
+					return err
+				}
+			}
+			return fmt.Errorf("no active poll to end")
+		},
+		UpdateStreamTitle: func(title string) error {
+			return a.UpdateChannelInfo(title, "", "", nil)
+		},
+		UpdateStreamGame: func(gameName string) error {
+			categories, err := a.SearchCategories(gameName)
+			if err != nil {
+				return err
+			}
+			if len(categories) == 0 {
+				return fmt.Errorf("no category found matching '%s'", gameName)
+			}
+			return a.UpdateChannelInfo("", categories[0].ID, "", nil)
+		},
+		CreateChannelReward: func(title string, cost int, prompt string) error {
+			_, err := a.CreateCustomReward(CreateRewardInput{
+				Title:     title,
+				Cost:      cost,
+				Prompt:    prompt,
+				IsEnabled: true,
+			})
+			return err
+		},
+		PauseReward: func(title string) error {
+			rewards, err := a.GetCustomRewards()
+			if err != nil {
+				return err
+			}
+			titleLower := strings.ToLower(title)
+			for _, r := range rewards {
+				if strings.EqualFold(r.Title, title) {
+					return a.ToggleCustomRewardPaused(r.ID, true)
+				}
+			}
+			for _, r := range rewards {
+				if strings.Contains(strings.ToLower(r.Title), titleLower) {
+					return a.ToggleCustomRewardPaused(r.ID, true)
+				}
+			}
+			return fmt.Errorf("no reward found matching '%s'", title)
+		},
+		ResumeReward: func(title string) error {
+			rewards, err := a.GetCustomRewards()
+			if err != nil {
+				return err
+			}
+			titleLower := strings.ToLower(title)
+			for _, r := range rewards {
+				if strings.EqualFold(r.Title, title) {
+					return a.ToggleCustomRewardPaused(r.ID, false)
+				}
+			}
+			for _, r := range rewards {
+				if strings.Contains(strings.ToLower(r.Title), titleLower) {
+					return a.ToggleCustomRewardPaused(r.ID, false)
+				}
+			}
+			return fmt.Errorf("no reward found matching '%s'", title)
+		},
+	})
+	return a.aiProcessor, nil
+}
+
+// ProcessVoiceCommand accepts a base64-encoded WebM/Opus audio recording from the
+// frontend, transcribes it with OpenAI Whisper, and executes any Twitch management
+// commands via GPT-4o function calling.
+func (a *App) ProcessVoiceCommand(audioBase64 string) (*AICommandResultDTO, error) {
+	if !a.IsAuthenticated() {
+		return nil, fmt.Errorf("not authenticated — please log in first")
+	}
+
+	processor, err := a.getAIProcessor()
+	if err != nil {
+		return nil, err
+	}
+
+	audioBytes, err := base64.StdEncoding.DecodeString(audioBase64)
+	if err != nil {
+		return nil, fmt.Errorf("invalid audio data: %w", err)
+	}
+	if len(audioBytes) == 0 {
+		return nil, fmt.Errorf("audio data is empty")
+	}
+
+	result, err := processor.ProcessAudio(a.ctx, audioBytes)
+	if err != nil {
+		return nil, err
+	}
+
+	// Notify pages that depend on channel info to re-fetch if the AI touched stream info.
+	for _, action := range result.Actions {
+		switch action {
+		case "update_stream_title", "update_stream_game":
+			runtime.EventsEmit(a.ctx, "streaminfo:changed")
+		case "create_poll", "end_poll":
+			runtime.EventsEmit(a.ctx, "polls:changed")
+		case "create_channel_point_reward", "pause_reward", "resume_reward":
+			runtime.EventsEmit(a.ctx, "rewards:changed")
+		}
+	}
+
+	return &AICommandResultDTO{
+		Transcript: result.Transcript,
+		Message:    result.Message,
+		Actions:    result.Actions,
+	}, nil
+}
+
+// ─── Predictions ─────────────────────────────────────────────────────────────
+
+// PredictionOutcomeDTO mirrors a prediction outcome for the frontend.
+type PredictionOutcomeDTO struct {
+	ID            string `json:"id"`
+	Title         string `json:"title"`
+	Color         string `json:"color"`
+	Users         int    `json:"users"`
+	ChannelPoints int    `json:"channelPoints"`
+}
+
+// PredictionDTO mirrors twitch.Prediction for the frontend.
+type PredictionDTO struct {
+	ID               string                 `json:"id"`
+	Title            string                 `json:"title"`
+	WinningOutcomeID string                 `json:"winningOutcomeId"`
+	Outcomes         []PredictionOutcomeDTO `json:"outcomes"`
+	PredictionWindow int                    `json:"predictionWindow"`
+	Status           string                 `json:"status"`
+	CreatedAt        string                 `json:"createdAt"`
+	EndedAt          string                 `json:"endedAt"`
+	LockedAt         string                 `json:"lockedAt"`
+}
+
+func predictionToDTO(p twitch.Prediction) PredictionDTO {
+	outcomes := make([]PredictionOutcomeDTO, len(p.Outcomes))
+	for i, o := range p.Outcomes {
+		outcomes[i] = PredictionOutcomeDTO{
+			ID:            o.ID,
+			Title:         o.Title,
+			Color:         o.Color,
+			Users:         o.Users,
+			ChannelPoints: o.ChannelPoints,
+		}
+	}
+	return PredictionDTO{
+		ID:               p.ID,
+		Title:            p.Title,
+		WinningOutcomeID: p.WinningOutcomeID,
+		Outcomes:         outcomes,
+		PredictionWindow: p.PredictionWindow,
+		Status:           p.Status,
+		CreatedAt:        p.CreatedAt,
+		EndedAt:          p.EndedAt,
+		LockedAt:         p.LockedAt,
+	}
+}
+
+// GetPredictions returns recent predictions for the authenticated broadcaster.
+func (a *App) GetPredictions() ([]PredictionDTO, error) {
+	row, err := a.database.GetAuth()
+	if err != nil || row == nil || row.AccessToken == "" {
+		return nil, fmt.Errorf("not authenticated")
+	}
+	predictions, err := twitch.GetPredictions(twitchClientID, row.AccessToken, row.UserID)
+	if err != nil {
+		return nil, err
+	}
+	dtos := make([]PredictionDTO, len(predictions))
+	for i, p := range predictions {
+		dtos[i] = predictionToDTO(p)
+	}
+	return dtos, nil
+}
+
+// CreatePrediction creates a new channel prediction.
+// outcomes must have 2–10 items; window is in seconds (30–1800).
+func (a *App) CreatePrediction(title string, outcomes []string, window int) (*PredictionDTO, error) {
+	row, err := a.database.GetAuth()
+	if err != nil || row == nil || row.AccessToken == "" {
+		return nil, fmt.Errorf("not authenticated")
+	}
+	p, err := twitch.CreatePrediction(twitchClientID, row.AccessToken, row.UserID, title, outcomes, window)
+	if err != nil {
+		return nil, err
+	}
+	dto := predictionToDTO(*p)
+	return &dto, nil
+}
+
+// EndPrediction resolves, cancels, or locks a prediction.
+// Pass status "RESOLVED" with a winningOutcomeID, "CANCELED", or "LOCKED".
+func (a *App) EndPrediction(predictionID, status, winningOutcomeID string) (*PredictionDTO, error) {
+	row, err := a.database.GetAuth()
+	if err != nil || row == nil || row.AccessToken == "" {
+		return nil, fmt.Errorf("not authenticated")
+	}
+	p, err := twitch.EndPrediction(twitchClientID, row.AccessToken, row.UserID, predictionID, status, winningOutcomeID)
+	if err != nil {
+		return nil, err
+	}
+	dto := predictionToDTO(*p)
+	return &dto, nil
+}
+
+// ─── Tools (Announcements, Shoutouts, Stream Markers) ────────────────────────
+
+// SendAnnouncement sends a highlighted announcement in the broadcaster's chat.
+// color must be one of: blue, green, orange, purple, primary (empty defaults to primary).
+func (a *App) SendAnnouncement(message, color string) error {
+	row, err := a.database.GetAuth()
+	if err != nil || row == nil || row.AccessToken == "" {
+		return fmt.Errorf("not authenticated")
+	}
+	return twitch.SendAnnouncement(twitchClientID, row.AccessToken, row.UserID, row.UserID, message, color)
+}
+
+// SendShoutout sends a shoutout to a channel identified by login name.
+func (a *App) SendShoutout(targetLogin string) error {
+	if targetLogin == "" {
+		return fmt.Errorf("target channel login is required")
+	}
+	row, err := a.database.GetAuth()
+	if err != nil || row == nil || row.AccessToken == "" {
+		return fmt.Errorf("not authenticated")
+	}
+	target, err := twitch.GetUserByLogin(twitchClientID, row.AccessToken, targetLogin)
+	if err != nil {
+		return fmt.Errorf("user not found: %w", err)
+	}
+	return twitch.SendShoutout(twitchClientID, row.AccessToken, row.UserID, target.ID, row.UserID)
+}
+
+// CreateStreamMarker creates a marker at the current position in the live VOD.
+// description is optional (≤140 chars). Requires the stream to be live with VOD enabled.
+func (a *App) CreateStreamMarker(description string) error {
+	row, err := a.database.GetAuth()
+	if err != nil || row == nil || row.AccessToken == "" {
+		return fmt.Errorf("not authenticated")
+	}
+	return twitch.CreateStreamMarker(twitchClientID, row.AccessToken, row.UserID, description)
+}
+
+// ─── Dashboard Stats ──────────────────────────────────────────────────────────
+
+// CreatorGoalDTO is the frontend-facing creator goal structure.
+type CreatorGoalDTO struct {
+	ID            string `json:"id"`
+	Type          string `json:"type"`
+	Description   string `json:"description"`
+	CurrentAmount int    `json:"currentAmount"`
+	TargetAmount  int    `json:"targetAmount"`
+	CreatedAt     string `json:"createdAt"`
+}
+
+// GetCreatorGoals returns active creator goals for the authenticated broadcaster.
+func (a *App) GetCreatorGoals() ([]CreatorGoalDTO, error) {
+	row, err := a.database.GetAuth()
+	if err != nil || row == nil || row.AccessToken == "" {
+		return nil, fmt.Errorf("not authenticated")
+	}
+	goals, err := twitch.GetCreatorGoals(twitchClientID, row.AccessToken, row.UserID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]CreatorGoalDTO, len(goals))
+	for i, g := range goals {
+		out[i] = CreatorGoalDTO{
+			ID:            g.ID,
+			Type:          g.Type,
+			Description:   g.Description,
+			CurrentAmount: g.CurrentAmount,
+			TargetAmount:  g.TargetAmount,
+			CreatedAt:     g.CreatedAt,
+		}
+	}
+	return out, nil
+}
+
+// HypeTrainEventDTO is the frontend-facing hype train event structure.
+type HypeTrainEventDTO struct {
+	Level     int    `json:"level"`
+	Total     int    `json:"total"`
+	Goal      int    `json:"goal"`
+	StartedAt string `json:"startedAt"`
+	ExpiresAt string `json:"expiresAt"`
+}
+
+// GetHypeTrainEvents returns the most recent hype train event for the broadcaster.
+// Returns an empty slice if no hype train is active or has recently occurred.
+func (a *App) GetHypeTrainEvents() ([]HypeTrainEventDTO, error) {
+	row, err := a.database.GetAuth()
+	if err != nil || row == nil || row.AccessToken == "" {
+		return nil, fmt.Errorf("not authenticated")
+	}
+	events, err := twitch.GetHypeTrainEvents(twitchClientID, row.AccessToken, row.UserID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]HypeTrainEventDTO, len(events))
+	for i, e := range events {
+		out[i] = HypeTrainEventDTO{
+			Level:     e.EventData.Level,
+			Total:     e.EventData.Total,
+			Goal:      e.EventData.Goal,
+			StartedAt: e.EventData.StartedAt,
+			ExpiresAt: e.EventData.ExpiresAt,
+		}
+	}
+	return out, nil
 }

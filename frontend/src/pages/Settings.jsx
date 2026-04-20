@@ -10,6 +10,7 @@ export default function Settings() {
   const [customFileName, setCustomFileName] = useState('')
   const [busy, setBusy] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [showKey, setShowKey] = useState(false)
 
   useEffect(() => {
     GetSettings().then(settings => setS(settings))
@@ -202,6 +203,47 @@ export default function Settings() {
               onChange={e => setS({ ...s, cooldownMs: parseInt(e.target.value, 10) || 0 })} />
           </div>
 
+        </div>
+      </div>
+
+      {/* AI Voice Commands */}
+      <div className="card">
+        <div className="card-title">AI Voice Commands</div>
+        <div className="settings-group">
+          <div className="setting-row" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 6 }}>
+            <div className="setting-label">OpenAI API Key</div>
+            <div className="setting-description">
+              Required for voice commands. Get yours at{' '}
+              <a href="https://platform.openai.com/api-keys" target="_blank" rel="noreferrer"
+                style={{ color: 'var(--accent)' }}>
+                platform.openai.com/api-keys
+              </a>.
+            </div>
+            <div style={{ display: 'flex', gap: 8, width: '100%' }}>
+              <input
+                className="text-input"
+                type={showKey ? 'text' : 'password'}
+                value={s.openAIApiKey || ''}
+                onChange={e => setS({ ...s, openAIApiKey: e.target.value })}
+                placeholder="sk-proj-…"
+                autoComplete="off"
+                spellCheck={false}
+                style={{ flex: 1, fontFamily: showKey ? 'monospace' : undefined }}
+              />
+              <button
+                className="btn btn-secondary btn-sm"
+                onClick={() => setShowKey(v => !v)}
+                type="button"
+                title={showKey ? 'Hide key' : 'Show key'}
+              >
+                {showKey ? 'Hide' : 'Show'}
+              </button>
+            </div>
+            {s.openAIApiKey
+              ? <span style={{ fontSize: 12, color: 'var(--text-success, #4caf50)' }}>&#x2713; API key set — voice commands enabled</span>
+              : <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>No key set — voice commands unavailable</span>
+            }
+          </div>
         </div>
       </div>
 
