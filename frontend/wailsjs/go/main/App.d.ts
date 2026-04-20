@@ -10,6 +10,8 @@ export function ClearCustomSound():Promise<void>;
 
 export function ConnectEventSub():Promise<void>;
 
+export function CreateClip(arg1:boolean):Promise<main.ClipCreatedDTO>;
+
 export function CreateCustomReward(arg1:main.CreateRewardInput):Promise<main.CustomRewardDTO>;
 
 export function CreatePoll(arg1:string,arg2:Array<string>,arg3:number):Promise<main.PollDTO>;
@@ -29,6 +31,8 @@ export function EndPoll(arg1:string,arg2:boolean):Promise<main.PollDTO>;
 export function EndPrediction(arg1:string,arg2:string,arg3:string):Promise<main.PredictionDTO>;
 
 export function FulfillRedemption(arg1:string,arg2:string):Promise<void>;
+
+export function GetClips(arg1:number):Promise<Array<main.ClipDTO>>;
 
 export function GetConnectionStatus():Promise<string>;
 
@@ -66,6 +70,8 @@ export function Login():Promise<void>;
 
 export function Logout():Promise<void>;
 
+export function OpenURL(arg1:string):Promise<void>;
+
 export function PollLogin():Promise<void>;
 
 export function ProcessVoiceCommand(arg1:string):Promise<main.AICommandResultDTO>;
@@ -87,6 +93,8 @@ export function SendShoutout(arg1:string):Promise<void>;
 export function StartLogin():Promise<string>;
 
 export function StartRaid(arg1:string):Promise<void>;
+
+export function SuggestClipTitle(arg1:string,arg2:string):Promise<string>;
 
 export function TestSound():Promise<void>;
 

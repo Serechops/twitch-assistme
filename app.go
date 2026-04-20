@@ -25,7 +25,7 @@ import (
 
 const (
 	twitchRedirectURI = "http://localhost:3333"
-	twitchScopes      = "user:read:chat channel:manage:polls channel:manage:raids user:read:follows channel:manage:broadcast channel:manage:redemptions channel:manage:predictions moderator:manage:announcements moderator:manage:shoutouts channel:read:goals channel:read:hype_train"
+	twitchScopes      = "user:read:chat channel:manage:polls channel:manage:raids user:read:follows channel:manage:broadcast channel:manage:redemptions channel:manage:predictions moderator:manage:announcements moderator:manage:shoutouts channel:read:goals channel:read:hype_train clips:edit"
 )
 
 // App is the main application struct bound to the Wails frontend.
@@ -1348,6 +1348,10 @@ func (a *App) getAIProcessor() (*ai.Processor, error) {
 			}
 			return fmt.Errorf("no reward found matching '%s'", title)
 		},
+		CreateClip: func() error {
+			_, err := a.CreateClip(false)
+			return err
+		},
 	})
 	return a.aiProcessor, nil
 }
@@ -1597,4 +1601,83 @@ func (a *App) GetHypeTrainEvents() ([]HypeTrainEventDTO, error) {
 		}
 	}
 	return out, nil
+}
+
+// ── Clips ────────────────────────────────────────────────────────────────────
+
+// ClipCreatedDTO is returned after a clip is created.
+type ClipCreatedDTO struct {
+	ID      string `json:"id"`
+	EditURL string `json:"editUrl"`
+}
+
+// ClipDTO represents a Twitch clip for display.
+type ClipDTO struct {
+	ID           string  `json:"id"`
+	URL          string  `json:"url"`
+	EditURL      string  `json:"editUrl"`
+	Title        string  `json:"title"`
+	CreatorName  string  `json:"creatorName"`
+	ThumbnailURL string  `json:"thumbnailUrl"`
+	ViewCount    int     `json:"viewCount"`
+	Duration     float64 `json:"duration"`
+	CreatedAt    string  `json:"createdAt"`
+	IsFeatured   bool    `json:"isFeatured"`
+}
+
+// CreateClip creates a clip from the broadcaster's live stream.
+// hasDelay adds a brief buffer to account for stream delay.
+func (a *App) CreateClip(hasDelay bool) (*ClipCreatedDTO, error) {
+	row, err := a.database.GetAuth()
+	if err != nil || row == nil || row.AccessToken == "" {
+		return nil, fmt.Errorf("not authenticated")
+	}
+	created, err := twitch.CreateClip(twitchClientID, row.AccessToken, row.UserID, hasDelay)
+	if err != nil {
+		return nil, err
+	}
+	return &ClipCreatedDTO{ID: created.ID, EditURL: created.EditURL}, nil
+}
+
+// GetClips returns the broadcaster's most recent clips (up to first, max 100).
+func (a *App) GetClips(first int) ([]ClipDTO, error) {
+	row, err := a.database.GetAuth()
+	if err != nil || row == nil || row.AccessToken == "" {
+		return nil, fmt.Errorf("not authenticated")
+	}
+	clips, err := twitch.GetClips(twitchClientID, row.AccessToken, row.UserID, first)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]ClipDTO, len(clips))
+	for i, c := range clips {
+		out[i] = ClipDTO{
+			ID:           c.ID,
+			URL:          c.URL,
+			EditURL:      c.EditURL,
+			Title:        c.Title,
+			CreatorName:  c.CreatorName,
+			ThumbnailURL: c.ThumbnailURL,
+			ViewCount:    c.ViewCount,
+			Duration:     c.Duration,
+			CreatedAt:    c.CreatedAt,
+			IsFeatured:   c.IsFeatured,
+		}
+	}
+	return out, nil
+}
+
+// OpenURL opens the given URL in the user's default browser.
+func (a *App) OpenURL(url string) {
+	runtime.BrowserOpenURL(a.ctx, url)
+}
+
+// SuggestClipTitle uses AI to suggest a clip title based on the current stream context.
+// streamTitle and gameName should be the current stream title and game/category.
+func (a *App) SuggestClipTitle(streamTitle, gameName string) (string, error) {
+	processor, err := a.getAIProcessor()
+	if err != nil {
+		return "", err
+	}
+	return processor.SuggestClipTitle(a.ctx, streamTitle, gameName)
 }

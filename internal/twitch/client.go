@@ -1336,3 +1336,97 @@ func GetHypeTrainEvents(clientID, accessToken, broadcasterID string) ([]HypeTrai
 	}
 	return payload.Data, nil
 }
+
+// ── Clips ────────────────────────────────────────────────────────────────────
+
+// ClipCreated is returned by POST /helix/clips.
+type ClipCreated struct {
+	ID      string `json:"id"`
+	EditURL string `json:"edit_url"`
+}
+
+// Clip holds the full metadata for a Twitch clip.
+type Clip struct {
+	ID            string  `json:"id"`
+	URL           string  `json:"url"`
+	EditURL       string  `json:"edit_url"`
+	BroadcasterID string  `json:"broadcaster_id"`
+	CreatorName   string  `json:"creator_name"`
+	VideoID       string  `json:"video_id"`
+	GameID        string  `json:"game_id"`
+	Title         string  `json:"title"`
+	ViewCount     int     `json:"view_count"`
+	CreatedAt     string  `json:"created_at"`
+	ThumbnailURL  string  `json:"thumbnail_url"`
+	Duration      float64 `json:"duration"`
+	IsFeatured    bool    `json:"is_featured"`
+}
+
+// CreateClip creates a clip from the broadcaster's live stream.
+// Requires the clips:edit scope.
+// The returned EditURL can be opened in a browser to set the title/duration.
+// Clip creation is asynchronous — the clip may not be immediately available via GetClips.
+func CreateClip(clientID, accessToken, broadcasterID string, hasDelay bool) (*ClipCreated, error) {
+	delay := "false"
+	if hasDelay {
+		delay = "true"
+	}
+	url := fmt.Sprintf("%s/clips?broadcaster_id=%s&has_delay=%s", helixBase, broadcasterID, delay)
+	req, err := http.NewRequest(http.MethodPost, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Client-Id", clientID)
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("twitch: create clip: %w", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted {
+		return nil, fmt.Errorf("twitch: create clip status %d: %s", resp.StatusCode, body)
+	}
+	var payload struct {
+		Data []ClipCreated `json:"data"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil, fmt.Errorf("twitch: create clip decode: %w", err)
+	}
+	if len(payload.Data) == 0 {
+		return nil, fmt.Errorf("twitch: create clip returned no data")
+	}
+	return &payload.Data[0], nil
+}
+
+// GetClips returns the broadcaster's most recent clips (up to first, max 100).
+func GetClips(clientID, accessToken, broadcasterID string, first int) ([]Clip, error) {
+	if first <= 0 {
+		first = 20
+	}
+	url := fmt.Sprintf("%s/clips?broadcaster_id=%s&first=%d", helixBase, broadcasterID, first)
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Client-Id", clientID)
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("twitch: get clips: %w", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("twitch: get clips status %d: %s", resp.StatusCode, body)
+	}
+	var payload struct {
+		Data []Clip `json:"data"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil, fmt.Errorf("twitch: get clips decode: %w", err)
+	}
+	return payload.Data, nil
+}

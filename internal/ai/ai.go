@@ -25,6 +25,7 @@ type ActionHandlers struct {
 	CreateChannelReward func(title string, cost int, prompt string) error
 	PauseReward         func(title string) error
 	ResumeReward        func(title string) error
+	CreateClip          func() error
 }
 
 // CommandResult is the outcome of a voice command, returned to the frontend.
@@ -93,6 +94,7 @@ You have access to the following Twitch actions:
 - update_stream_title: Update the live stream title
 - update_stream_game: Change the stream category/game
 - create_channel_point_reward: Create a new channel point reward
+- create_clip: Create a clip from the current live stream
 
 When you receive a voice command, decide which action(s) to take and call the appropriate tool(s).
 Be concise and action-oriented. If no action is appropriate, explain why.
@@ -292,9 +294,41 @@ func (p *Processor) executeTool(name, argsJSON string) (string, error) {
 		}
 		return fmt.Sprintf("Reward '%s' resumed.", title), nil
 
+	case "create_clip":
+		if p.handlers.CreateClip == nil {
+			return "", fmt.Errorf("create_clip handler not configured")
+		}
+		if err := p.handlers.CreateClip(); err != nil {
+			return "", err
+		}
+		return "Clip created from the live stream!", nil
+
 	default:
 		return "", fmt.Errorf("unknown tool: %s", name)
 	}
+}
+
+// SuggestClipTitle uses GPT-4o mini to generate a catchy clip title based on
+// the current stream context (title and game/category).
+func (p *Processor) SuggestClipTitle(ctx context.Context, streamTitle, gameName string) (string, error) {
+	prompt := fmt.Sprintf(
+		"You are a Twitch clip title generator. Given the stream context below, suggest a single short, catchy, engaging clip title (max 8 words). Output ONLY the title, no quotes, no explanation.\n\nStream title: %s\nGame/Category: %s",
+		streamTitle, gameName,
+	)
+	resp, err := p.client.CreateChatCompletion(ctx, openai.ChatCompletionRequest{
+		Model: openai.GPT4oMini,
+		Messages: []openai.ChatCompletionMessage{
+			{Role: openai.ChatMessageRoleUser, Content: prompt},
+		},
+		MaxTokens: 30,
+	})
+	if err != nil {
+		return "", fmt.Errorf("suggest clip title: %w", err)
+	}
+	if len(resp.Choices) == 0 {
+		return "", fmt.Errorf("no response from AI")
+	}
+	return strings.TrimSpace(resp.Choices[0].Message.Content), nil
 }
 
 // buildTools returns the set of OpenAI tool definitions for Twitch stream management.
@@ -455,6 +489,14 @@ func buildTools() []openai.Tool {
 					},
 					"required": ["reward_title"]
 				}`),
+			},
+		},
+		{
+			Type: openai.ToolTypeFunction,
+			Function: &openai.FunctionDefinition{
+				Name:        "create_clip",
+				Description: "Create a clip from the current live stream. Use when the broadcaster says 'clip that', 'make a clip', or 'create a clip'.",
+				Parameters:  json.RawMessage(`{"type": "object", "properties": {}}`),
 			},
 		},
 	}

@@ -10,6 +10,7 @@ import StreamInfo from './pages/StreamInfo'
 import Rewards from './pages/Rewards'
 import Predictions from './pages/Predictions'
 import Tools from './pages/Tools'
+import Clips from './pages/Clips'
 import useChatNotification from './hooks/useChatNotification'
 import useVoiceCommand from './hooks/useVoiceCommand'
 import VoiceCommandOverlay from './components/VoiceCommandOverlay'
@@ -50,6 +51,9 @@ export default function App() {
           <NavLink to="/tools" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>
             Tools
           </NavLink>
+          <NavLink to="/clips" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>
+            Clips
+          </NavLink>
           <NavLink to="/stream-info" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>
             Stream Info
           </NavLink>
@@ -88,6 +92,7 @@ export default function App() {
           <Route path="/predictions" element={<Predictions />} />
           <Route path="/raids" element={<Raids />} />
           <Route path="/tools" element={<Tools />} />
+          <Route path="/clips" element={<Clips />} />
           <Route path="/stream-info" element={<StreamInfo />} />
           <Route path="/rewards" element={<Rewards />} />
           <Route path="/settings" element={<Settings />} />

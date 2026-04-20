@@ -116,6 +116,50 @@ export namespace main {
 	        this.tags = source["tags"];
 	    }
 	}
+	export class ClipCreatedDTO {
+	    id: string;
+	    editUrl: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ClipCreatedDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.editUrl = source["editUrl"];
+	    }
+	}
+	export class ClipDTO {
+	    id: string;
+	    url: string;
+	    editUrl: string;
+	    title: string;
+	    creatorName: string;
+	    thumbnailUrl: string;
+	    viewCount: number;
+	    duration: number;
+	    createdAt: string;
+	    isFeatured: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new ClipDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.url = source["url"];
+	        this.editUrl = source["editUrl"];
+	        this.title = source["title"];
+	        this.creatorName = source["creatorName"];
+	        this.thumbnailUrl = source["thumbnailUrl"];
+	        this.viewCount = source["viewCount"];
+	        this.duration = source["duration"];
+	        this.createdAt = source["createdAt"];
+	        this.isFeatured = source["isFeatured"];
+	    }
+	}
 	export class CreateRewardInput {
 	    title: string;
 	    cost: number;

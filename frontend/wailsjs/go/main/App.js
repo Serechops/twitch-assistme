@@ -18,6 +18,10 @@ export function ConnectEventSub() {
   return window['go']['main']['App']['ConnectEventSub']();
 }
 
+export function CreateClip(arg1) {
+  return window['go']['main']['App']['CreateClip'](arg1);
+}
+
 export function CreateCustomReward(arg1) {
   return window['go']['main']['App']['CreateCustomReward'](arg1);
 }
@@ -56,6 +60,10 @@ export function EndPrediction(arg1, arg2, arg3) {
 
 export function FulfillRedemption(arg1, arg2) {
   return window['go']['main']['App']['FulfillRedemption'](arg1, arg2);
+}
+
+export function GetClips(arg1) {
+  return window['go']['main']['App']['GetClips'](arg1);
 }
 
 export function GetConnectionStatus() {
@@ -130,6 +138,10 @@ export function Logout() {
   return window['go']['main']['App']['Logout']();
 }
 
+export function OpenURL(arg1) {
+  return window['go']['main']['App']['OpenURL'](arg1);
+}
+
 export function PollLogin() {
   return window['go']['main']['App']['PollLogin']();
 }
@@ -172,6 +184,10 @@ export function StartLogin() {
 
 export function StartRaid(arg1) {
   return window['go']['main']['App']['StartRaid'](arg1);
+}
+
+export function SuggestClipTitle(arg1, arg2) {
+  return window['go']['main']['App']['SuggestClipTitle'](arg1, arg2);
 }
 
 export function TestSound() {
