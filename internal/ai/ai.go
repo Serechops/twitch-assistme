@@ -1,6 +1,6 @@
 // Package ai provides the OpenAI-powered voice command processor for AssistMe.
 // It transcribes audio via Whisper and dispatches Twitch stream management
-// actions via GPT-4o function calling.
+// actions via the OpenAI Responses API with function calling and web search.
 package ai
 
 import (
@@ -9,9 +9,22 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 
-	openai "github.com/sashabaranov/go-openai"
+	openai "github.com/openai/openai-go"
+	"github.com/openai/openai-go/option"
+	"github.com/openai/openai-go/packages/param"
+	"github.com/openai/openai-go/responses"
 )
+
+// namedReader wraps bytes.Reader to provide a filename hint to the multipart encoder,
+// allowing OpenAI Whisper to determine the audio format from the file extension.
+type namedReader struct {
+	*bytes.Reader
+	filename string
+}
+
+func (n *namedReader) Filename() string { return n.filename }
 
 // ActionHandlers are the Twitch action callbacks the AI can invoke.
 // Each handler must be safe to call concurrently (the caller provides these).
@@ -35,16 +48,31 @@ type CommandResult struct {
 	Actions    []string `json:"actions"`
 }
 
+// GameAssistantResult is the outcome of a game guide query.
+type GameAssistantResult struct {
+	Answer  string       `json:"answer"`
+	Sources []GameSource `json:"sources"`
+}
+
+// GameSource is a web search citation returned with a game guide answer.
+type GameSource struct {
+	Title string `json:"title"`
+	URL   string `json:"url"`
+}
+
 // Processor transcribes audio and executes AI-driven Twitch commands.
 type Processor struct {
-	client   *openai.Client
-	handlers ActionHandlers
+	client         openai.Client
+	handlers       ActionHandlers
+	mu             sync.Mutex
+	voiceSessionID string
+	gameSessionID  string
 }
 
 // NewProcessor constructs a Processor with the given OpenAI API key and action handlers.
 func NewProcessor(apiKey string, handlers ActionHandlers) *Processor {
 	return &Processor{
-		client:   openai.NewClient(apiKey),
+		client:   openai.NewClient(option.WithAPIKey(apiKey)),
 		handlers: handlers,
 	}
 }
@@ -62,29 +90,19 @@ func (p *Processor) ProcessAudio(ctx context.Context, audioData []byte) (*Comman
 	return p.processCommand(ctx, transcript)
 }
 
-// transcribe sends audio to OpenAI Whisper and returns the text.
+// transcribe sends audio to OpenAI Whisper and returns the transcript text.
 func (p *Processor) transcribe(ctx context.Context, audioData []byte) (string, error) {
-	req := openai.AudioRequest{
-		Model:    openai.Whisper1,
-		Reader:   bytes.NewReader(audioData),
-		FilePath: "audio.webm", // extension tells Whisper the format
-	}
-	resp, err := p.client.CreateTranscription(ctx, req)
+	resp, err := p.client.Audio.Transcriptions.New(ctx, openai.AudioTranscriptionNewParams{
+		File:  &namedReader{Reader: bytes.NewReader(audioData), filename: "audio.webm"},
+		Model: openai.AudioModelWhisper1,
+	})
 	if err != nil {
 		return "", err
 	}
 	return resp.Text, nil
 }
 
-// processCommand sends the transcript to GPT-4o with Twitch tool definitions,
-// executes any requested tool calls, and returns a human-readable result.
-func (p *Processor) processCommand(ctx context.Context, transcript string) (*CommandResult, error) {
-	tools := buildTools()
-
-	messages := []openai.ChatCompletionMessage{
-		{
-			Role: openai.ChatMessageRoleSystem,
-			Content: `You are AssistMe, an AI assistant integrated into a Twitch stream management dashboard.
+const voiceSystemPrompt = `You are AssistMe, an AI assistant integrated into a Twitch stream management dashboard.
 You help the broadcaster manage their stream hands-free via voice commands.
 
 You have access to the following Twitch actions:
@@ -93,77 +111,196 @@ You have access to the following Twitch actions:
 - cancel_raid: Cancel the current pending raid
 - update_stream_title: Update the live stream title
 - update_stream_game: Change the stream category/game
+- end_poll: End the currently active poll
 - create_channel_point_reward: Create a new channel point reward
+- pause_reward: Pause a channel point reward
+- resume_reward: Resume a paused channel point reward
 - create_clip: Create a clip from the current live stream
 
 When you receive a voice command, decide which action(s) to take and call the appropriate tool(s).
 Be concise and action-oriented. If no action is appropriate, explain why.
-Always confirm what you did in a brief, friendly response.`,
-		},
-		{
-			Role:    openai.ChatMessageRoleUser,
-			Content: transcript,
-		},
+Always confirm what you did in a brief, friendly response.`
+
+// processCommand sends the transcript to the Responses API, executes any tool calls,
+// and returns a human-readable result. It uses previous_response_id for conversation state.
+func (p *Processor) processCommand(ctx context.Context, transcript string) (*CommandResult, error) {
+	p.mu.Lock()
+	prevID := p.voiceSessionID
+	p.mu.Unlock()
+
+	reqParams := responses.ResponseNewParams{
+		Model:        openai.ChatModelGPT4oMini,
+		Instructions: param.NewOpt(voiceSystemPrompt),
+		Input:        responses.ResponseNewParamsInputUnion{OfString: param.NewOpt(transcript)},
+		Tools:        buildTools(),
+		Store:        param.NewOpt(true),
+	}
+	if prevID != "" {
+		reqParams.PreviousResponseID = param.NewOpt(prevID)
 	}
 
-	resp, err := p.client.CreateChatCompletion(ctx, openai.ChatCompletionRequest{
-		Model:    openai.GPT4oMini,
-		Messages: messages,
-		Tools:    tools,
-	})
+	resp, err := p.client.Responses.New(ctx, reqParams)
 	if err != nil {
-		return nil, fmt.Errorf("chat completion: %w", err)
+		return nil, fmt.Errorf("responses API: %w", err)
 	}
 
-	if len(resp.Choices) == 0 {
-		return nil, fmt.Errorf("no response from AI")
-	}
+	p.mu.Lock()
+	p.voiceSessionID = resp.ID
+	p.mu.Unlock()
 
-	choice := resp.Choices[0]
 	var actionsPerformed []string
+	var toolOutputs []responses.ResponseInputItemUnionParam
 
-	// Execute each tool call the model requested.
-	if len(choice.Message.ToolCalls) > 0 {
-		messages = append(messages, choice.Message)
-
-		for _, tc := range choice.Message.ToolCalls {
-			result, execErr := p.executeTool(tc.Function.Name, tc.Function.Arguments)
+	for _, item := range resp.Output {
+		if item.Type == "function_call" {
+			result, execErr := p.executeTool(item.Name, item.Arguments)
 			if execErr != nil {
 				result = fmt.Sprintf("error: %s", execErr.Error())
 			} else {
-				actionsPerformed = append(actionsPerformed, tc.Function.Name)
+				actionsPerformed = append(actionsPerformed, item.Name)
 			}
-			messages = append(messages, openai.ChatCompletionMessage{
-				Role:       openai.ChatMessageRoleTool,
-				ToolCallID: tc.ID,
-				Content:    result,
-			})
+			toolOutputs = append(toolOutputs, responses.ResponseInputItemParamOfFunctionCallOutput(item.CallID, result))
 		}
+	}
 
-		// Second call: get the final human-readable response.
-		finalResp, err := p.client.CreateChatCompletion(ctx, openai.ChatCompletionRequest{
-			Model:    openai.GPT4oMini,
-			Messages: messages,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("final response: %w", err)
-		}
-		if len(finalResp.Choices) == 0 {
-			return nil, fmt.Errorf("no final response from AI")
-		}
+	if len(toolOutputs) == 0 {
 		return &CommandResult{
 			Transcript: transcript,
-			Message:    finalResp.Choices[0].Message.Content,
+			Message:    resp.OutputText(),
 			Actions:    actionsPerformed,
 		}, nil
 	}
 
-	// No tool calls — the model just replied with text.
+	// Submit tool results and get the final human-readable response.
+	finalParams := responses.ResponseNewParams{
+		Model:              openai.ChatModelGPT4oMini,
+		Input:              responses.ResponseNewParamsInputUnion{OfInputItemList: responses.ResponseInputParam(toolOutputs)},
+		PreviousResponseID: param.NewOpt(resp.ID),
+		Store:              param.NewOpt(true),
+	}
+	finalResp, err := p.client.Responses.New(ctx, finalParams)
+	if err != nil {
+		return nil, fmt.Errorf("final response: %w", err)
+	}
+
+	p.mu.Lock()
+	p.voiceSessionID = finalResp.ID
+	p.mu.Unlock()
+
 	return &CommandResult{
 		Transcript: transcript,
-		Message:    choice.Message.Content,
+		Message:    finalResp.OutputText(),
 		Actions:    actionsPerformed,
 	}, nil
+}
+
+// AskGameGuide answers a gameplay question about the streamer's current game using web search.
+// It maintains a per-session conversation thread via previous_response_id.
+func (p *Processor) AskGameGuide(ctx context.Context, question, gameName, streamTitle string) (*GameAssistantResult, error) {
+	p.mu.Lock()
+	prevID := p.gameSessionID
+	p.mu.Unlock()
+
+	game := gameName
+	if game == "" {
+		game = "an unknown game"
+	}
+
+	instructions := fmt.Sprintf(
+		"You are a game guide assistant embedded in a Twitch streaming dashboard. "+
+			"The streamer is currently playing %s (stream title: %q). "+
+			"Your ONLY job is to answer gameplay questions about %s. "+
+			"You MUST use the web_search tool to look up accurate information before responding. "+
+			"Never refuse gameplay questions — always search and answer. "+
+			"Be concise and practical. Always include sources.",
+		game, streamTitle, game,
+	)
+
+	reqParams := responses.ResponseNewParams{
+		Model:        openai.ChatModelGPT4o,
+		Instructions: param.NewOpt(instructions),
+		Input:        responses.ResponseNewParamsInputUnion{OfString: param.NewOpt(question)},
+		Tools: []responses.ToolUnionParam{
+			responses.ToolParamOfWebSearchPreview(responses.WebSearchToolTypeWebSearchPreview),
+		},
+		// Force web_search_preview specifically — prevents the model from skipping the
+		// search and replying from training data (which causes refusal responses).
+		ToolChoice: responses.ResponseNewParamsToolChoiceUnion{
+			OfHostedTool: &responses.ToolChoiceTypesParam{
+				Type: responses.ToolChoiceTypesTypeWebSearchPreview,
+			},
+		},
+		Store: param.NewOpt(true),
+	}
+	if prevID != "" {
+		reqParams.PreviousResponseID = param.NewOpt(prevID)
+	}
+
+	resp, err := p.client.Responses.New(ctx, reqParams)
+	if err != nil {
+		// On error, drop the session so a stale ID doesn't poison future requests.
+		p.mu.Lock()
+		p.gameSessionID = ""
+		p.mu.Unlock()
+		return nil, fmt.Errorf("game guide: %w", err)
+	}
+
+	p.mu.Lock()
+	p.gameSessionID = resp.ID
+	p.mu.Unlock()
+
+	answer := resp.OutputText()
+
+	// If the model produced no web_search_call items, the search was skipped.
+	// Clear the session so the next question starts clean.
+	hasSearch := false
+	for _, item := range resp.Output {
+		if item.Type == "web_search_call" {
+			hasSearch = true
+			break
+		}
+	}
+	if !hasSearch {
+		p.mu.Lock()
+		p.gameSessionID = ""
+		p.mu.Unlock()
+		return nil, fmt.Errorf("web search was not performed — please try again")
+	}
+
+	// Extract URL citations from message content annotations.
+	seen := map[string]bool{}
+	var sources []GameSource
+	for _, item := range resp.Output {
+		if item.Type == "message" {
+			for _, content := range item.Content {
+				if content.Type == "output_text" {
+					for _, ann := range content.Annotations {
+						if ann.Type == "url_citation" && !seen[ann.URL] {
+							seen[ann.URL] = true
+							sources = append(sources, GameSource{Title: ann.Title, URL: ann.URL})
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return &GameAssistantResult{Answer: answer, Sources: sources}, nil
+}
+
+// ClearVoiceSession resets the voice command conversation thread so the next
+// command starts a fresh context.
+func (p *Processor) ClearVoiceSession() {
+	p.mu.Lock()
+	p.voiceSessionID = ""
+	p.mu.Unlock()
+}
+
+// ClearGameSession resets the game guide conversation thread.
+func (p *Processor) ClearGameSession() {
+	p.mu.Lock()
+	p.gameSessionID = ""
+	p.mu.Unlock()
 }
 
 // executeTool routes a tool call name to the appropriate handler.
@@ -315,189 +452,165 @@ func (p *Processor) SuggestClipTitle(ctx context.Context, streamTitle, gameName 
 		"You are a Twitch clip title generator. Given the stream context below, suggest a single short, catchy, engaging clip title (max 8 words). Output ONLY the title, no quotes, no explanation.\n\nStream title: %s\nGame/Category: %s",
 		streamTitle, gameName,
 	)
-	resp, err := p.client.CreateChatCompletion(ctx, openai.ChatCompletionRequest{
-		Model: openai.GPT4oMini,
-		Messages: []openai.ChatCompletionMessage{
-			{Role: openai.ChatMessageRoleUser, Content: prompt},
-		},
-		MaxTokens: 30,
+	resp, err := p.client.Responses.New(ctx, responses.ResponseNewParams{
+		Model:           openai.ChatModelGPT4oMini,
+		Input:           responses.ResponseNewParamsInputUnion{OfString: param.NewOpt(prompt)},
+		MaxOutputTokens: param.NewOpt[int64](30),
+		Store:           param.NewOpt(false),
 	})
 	if err != nil {
 		return "", fmt.Errorf("suggest clip title: %w", err)
 	}
-	if len(resp.Choices) == 0 {
-		return "", fmt.Errorf("no response from AI")
-	}
-	return strings.TrimSpace(resp.Choices[0].Message.Content), nil
+	return strings.TrimSpace(resp.OutputText()), nil
 }
 
-// buildTools returns the set of OpenAI tool definitions for Twitch stream management.
-func buildTools() []openai.Tool {
-	return []openai.Tool{
-		{
-			Type: openai.ToolTypeFunction,
-			Function: &openai.FunctionDefinition{
-				Name:        "create_poll",
-				Description: "Create a viewer poll on the Twitch channel. Use when the broadcaster wants to start a poll or vote.",
-				Parameters: json.RawMessage(`{
-					"type": "object",
-					"properties": {
-						"title": {
-							"type": "string",
-							"description": "The poll question, e.g. 'What game should we play next?'"
-						},
-						"choices": {
-							"type": "array",
-							"items": {"type": "string"},
-							"minItems": 2,
-							"maxItems": 5,
-							"description": "Poll answer choices (2–5 options)"
-						},
-						"duration_seconds": {
-							"type": "integer",
-							"description": "How long the poll runs in seconds (15–1800, default 60)",
-							"minimum": 15,
-							"maximum": 1800
-						}
+// buildTools returns the set of Responses API tool definitions for Twitch stream management.
+func buildTools() []responses.ToolUnionParam {
+	return []responses.ToolUnionParam{
+		{OfFunction: &responses.FunctionToolParam{
+			Name:        "create_poll",
+			Description: param.NewOpt("Create a viewer poll on the Twitch channel. Use when the broadcaster wants to start a poll or vote."),
+			Parameters: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"title": map[string]any{
+						"type":        "string",
+						"description": "The poll question, e.g. 'What game should we play next?'",
 					},
-					"required": ["title", "choices"]
-				}`),
-			},
-		},
-		{
-			Type: openai.ToolTypeFunction,
-			Function: &openai.FunctionDefinition{
-				Name:        "start_raid",
-				Description: "Initiate a Twitch raid to another live channel. Use when the broadcaster says 'raid' followed by a channel name.",
-				Parameters: json.RawMessage(`{
-					"type": "object",
-					"properties": {
-						"channel_login": {
-							"type": "string",
-							"description": "The Twitch login name (username) of the channel to raid, e.g. 'pokimane'"
-						}
+					"choices": map[string]any{
+						"type":        "array",
+						"items":       map[string]any{"type": "string"},
+						"minItems":    2,
+						"maxItems":    5,
+						"description": "Poll answer choices (2–5 options)",
 					},
-					"required": ["channel_login"]
-				}`),
-			},
-		},
-		{
-			Type: openai.ToolTypeFunction,
-			Function: &openai.FunctionDefinition{
-				Name:        "cancel_raid",
-				Description: "Cancel the currently pending raid. Use when the broadcaster says to cancel or stop a raid.",
-				Parameters:  json.RawMessage(`{"type": "object", "properties": {}}`),
-			},
-		},
-		{
-			Type: openai.ToolTypeFunction,
-			Function: &openai.FunctionDefinition{
-				Name:        "update_stream_title",
-				Description: "Update the live stream title/name. Use when the broadcaster wants to change what the stream is called.",
-				Parameters: json.RawMessage(`{
-					"type": "object",
-					"properties": {
-						"title": {
-							"type": "string",
-							"description": "The new stream title, e.g. 'Playing Minecraft with viewers! !discord'"
-						}
+					"duration_seconds": map[string]any{
+						"type":        "integer",
+						"description": "How long the poll runs in seconds (15–1800, default 60)",
+						"minimum":     15,
+						"maximum":     1800,
 					},
-					"required": ["title"]
-				}`),
+				},
+				"required": []string{"title", "choices"},
 			},
-		},
-		{
-			Type: openai.ToolTypeFunction,
-			Function: &openai.FunctionDefinition{
-				Name:        "update_stream_game",
-				Description: "Change the stream category or game. Use when the broadcaster switches games or wants to update what they're playing.",
-				Parameters: json.RawMessage(`{
-					"type": "object",
-					"properties": {
-						"game_name": {
-							"type": "string",
-							"description": "The name of the game or category, e.g. 'Minecraft', 'Just Chatting', 'Fortnite'"
-						}
+			Strict: param.NewOpt(false),
+		}},
+		{OfFunction: &responses.FunctionToolParam{
+			Name:        "start_raid",
+			Description: param.NewOpt("Initiate a Twitch raid to another live channel. Use when the broadcaster says 'raid' followed by a channel name."),
+			Parameters: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"channel_login": map[string]any{
+						"type":        "string",
+						"description": "The Twitch login name (username) of the channel to raid, e.g. 'pokimane'",
 					},
-					"required": ["game_name"]
-				}`),
+				},
+				"required": []string{"channel_login"},
 			},
-		},
-		{
-			Type: openai.ToolTypeFunction,
-			Function: &openai.FunctionDefinition{
-				Name:        "end_poll",
-				Description: "End the currently active poll and display results to viewers. Use when the broadcaster says to end, stop, or close the current poll.",
-				Parameters:  json.RawMessage(`{"type": "object", "properties": {}}`),
-			},
-		},
-		{
-			Type: openai.ToolTypeFunction,
-			Function: &openai.FunctionDefinition{
-				Name:        "create_channel_point_reward",
-				Description: "Create a new channel point custom reward that viewers can redeem.",
-				Parameters: json.RawMessage(`{
-					"type": "object",
-					"properties": {
-						"title": {
-							"type": "string",
-							"description": "The reward name, e.g. 'Hydration Check'"
-						},
-						"cost": {
-							"type": "integer",
-							"description": "Channel point cost for the reward",
-							"minimum": 1
-						},
-						"prompt": {
-							"type": "string",
-							"description": "Optional description shown to viewers when redeeming"
-						}
+			Strict: param.NewOpt(false),
+		}},
+		{OfFunction: &responses.FunctionToolParam{
+			Name:        "cancel_raid",
+			Description: param.NewOpt("Cancel the currently pending raid. Use when the broadcaster says to cancel or stop a raid."),
+			Parameters:  map[string]any{"type": "object", "properties": map[string]any{}},
+			Strict:      param.NewOpt(false),
+		}},
+		{OfFunction: &responses.FunctionToolParam{
+			Name:        "update_stream_title",
+			Description: param.NewOpt("Update the live stream title/name. Use when the broadcaster wants to change what the stream is called."),
+			Parameters: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"title": map[string]any{
+						"type":        "string",
+						"description": "The new stream title, e.g. 'Playing Minecraft with viewers! !discord'",
 					},
-					"required": ["title", "cost"]
-				}`),
+				},
+				"required": []string{"title"},
 			},
-		},
-		{
-			Type: openai.ToolTypeFunction,
-			Function: &openai.FunctionDefinition{
-				Name:        "pause_reward",
-				Description: "Pause a channel point reward so viewers cannot redeem it. Use when the broadcaster says to pause, disable, or turn off a reward.",
-				Parameters: json.RawMessage(`{
-					"type": "object",
-					"properties": {
-						"reward_title": {
-							"type": "string",
-							"description": "The title of the reward to pause, e.g. 'Pick My Song'"
-						}
+			Strict: param.NewOpt(false),
+		}},
+		{OfFunction: &responses.FunctionToolParam{
+			Name:        "update_stream_game",
+			Description: param.NewOpt("Change the stream category or game. Use when the broadcaster switches games or wants to update what they're playing."),
+			Parameters: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"game_name": map[string]any{
+						"type":        "string",
+						"description": "The name of the game or category, e.g. 'Minecraft', 'Just Chatting', 'Fortnite'",
 					},
-					"required": ["reward_title"]
-				}`),
+				},
+				"required": []string{"game_name"},
 			},
-		},
-		{
-			Type: openai.ToolTypeFunction,
-			Function: &openai.FunctionDefinition{
-				Name:        "resume_reward",
-				Description: "Resume (unpause) a paused channel point reward so viewers can redeem it again. Use when the broadcaster says to resume, enable, or turn on a reward.",
-				Parameters: json.RawMessage(`{
-					"type": "object",
-					"properties": {
-						"reward_title": {
-							"type": "string",
-							"description": "The title of the reward to resume, e.g. 'Pick My Song'"
-						}
+			Strict: param.NewOpt(false),
+		}},
+		{OfFunction: &responses.FunctionToolParam{
+			Name:        "end_poll",
+			Description: param.NewOpt("End the currently active poll and display results to viewers. Use when the broadcaster says to end, stop, or close the current poll."),
+			Parameters:  map[string]any{"type": "object", "properties": map[string]any{}},
+			Strict:      param.NewOpt(false),
+		}},
+		{OfFunction: &responses.FunctionToolParam{
+			Name:        "create_channel_point_reward",
+			Description: param.NewOpt("Create a new channel point custom reward that viewers can redeem."),
+			Parameters: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"title": map[string]any{
+						"type":        "string",
+						"description": "The reward name, e.g. 'Hydration Check'",
 					},
-					"required": ["reward_title"]
-				}`),
+					"cost": map[string]any{
+						"type":        "integer",
+						"description": "Channel point cost for the reward",
+						"minimum":     1,
+					},
+					"prompt": map[string]any{
+						"type":        "string",
+						"description": "Optional description shown to viewers when redeeming",
+					},
+				},
+				"required": []string{"title", "cost"},
 			},
-		},
-		{
-			Type: openai.ToolTypeFunction,
-			Function: &openai.FunctionDefinition{
-				Name:        "create_clip",
-				Description: "Create a clip from the current live stream. Use when the broadcaster says 'clip that', 'make a clip', or 'create a clip'.",
-				Parameters:  json.RawMessage(`{"type": "object", "properties": {}}`),
+			Strict: param.NewOpt(false),
+		}},
+		{OfFunction: &responses.FunctionToolParam{
+			Name:        "pause_reward",
+			Description: param.NewOpt("Pause a channel point reward so viewers cannot redeem it. Use when the broadcaster says to pause, disable, or turn off a reward."),
+			Parameters: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"reward_title": map[string]any{
+						"type":        "string",
+						"description": "The title of the reward to pause, e.g. 'Pick My Song'",
+					},
+				},
+				"required": []string{"reward_title"},
 			},
-		},
+			Strict: param.NewOpt(false),
+		}},
+		{OfFunction: &responses.FunctionToolParam{
+			Name:        "resume_reward",
+			Description: param.NewOpt("Resume (unpause) a paused channel point reward so viewers can redeem it again. Use when the broadcaster says to resume, enable, or turn on a reward."),
+			Parameters: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"reward_title": map[string]any{
+						"type":        "string",
+						"description": "The title of the reward to resume, e.g. 'Pick My Song'",
+					},
+				},
+				"required": []string{"reward_title"},
+			},
+			Strict: param.NewOpt(false),
+		}},
+		{OfFunction: &responses.FunctionToolParam{
+			Name:        "create_clip",
+			Description: param.NewOpt("Create a clip from the current live stream. Use when the broadcaster says 'clip that', 'make a clip', or 'create a clip'."),
+			Parameters:  map[string]any{"type": "object", "properties": map[string]any{}},
+			Strict:      param.NewOpt(false),
+		}},
 	}
 }

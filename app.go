@@ -1681,3 +1681,50 @@ func (a *App) SuggestClipTitle(streamTitle, gameName string) (string, error) {
 	}
 	return processor.SuggestClipTitle(a.ctx, streamTitle, gameName)
 }
+
+// GameGuideResultDTO is returned by AskGameGuide to the frontend.
+type GameGuideResultDTO struct {
+	Answer  string          `json:"answer"`
+	Sources []GameSourceDTO `json:"sources"`
+}
+
+// GameSourceDTO holds a web search citation from the game guide.
+type GameSourceDTO struct {
+	Title string `json:"title"`
+	URL   string `json:"url"`
+}
+
+// AskGameGuide answers a gameplay question about the current stream's game using AI web search.
+// It automatically fetches the current game from Twitch and chains conversation via session state.
+func (a *App) AskGameGuide(question string) (*GameGuideResultDTO, error) {
+	if strings.TrimSpace(question) == "" {
+		return nil, fmt.Errorf("question cannot be empty")
+	}
+	processor, err := a.getAIProcessor()
+	if err != nil {
+		return nil, err
+	}
+	info, err := a.GetMyChannelInfo()
+	if err != nil {
+		return nil, fmt.Errorf("could not fetch channel info: %w", err)
+	}
+	result, err := processor.AskGameGuide(a.ctx, question, info.GameName, info.Title)
+	if err != nil {
+		return nil, err
+	}
+	dto := &GameGuideResultDTO{Answer: result.Answer}
+	for _, s := range result.Sources {
+		dto.Sources = append(dto.Sources, GameSourceDTO{Title: s.Title, URL: s.URL})
+	}
+	return dto, nil
+}
+
+// ClearGameSession resets the game guide conversation so the next question starts fresh.
+func (a *App) ClearGameSession() error {
+	processor, err := a.getAIProcessor()
+	if err != nil {
+		return err
+	}
+	processor.ClearGameSession()
+	return nil
+}
