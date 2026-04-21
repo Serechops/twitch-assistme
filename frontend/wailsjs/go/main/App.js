@@ -186,6 +186,10 @@ export function SendShoutout(arg1) {
   return window['go']['main']['App']['SendShoutout'](arg1);
 }
 
+export function SpeakAnswer(arg1) {
+  return window['go']['main']['App']['SpeakAnswer'](arg1);
+}
+
 export function StartLogin() {
   return window['go']['main']['App']['StartLogin']();
 }

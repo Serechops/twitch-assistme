@@ -244,6 +244,21 @@ export default function Settings() {
               : <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>No key set — voice commands unavailable</span>
             }
           </div>
+
+          <div className="setting-row">
+            <div>
+              <div className="setting-label">Game Guide voice feedback</div>
+              <div className="setting-description">
+                Automatically read Game Guide answers aloud using AI text-to-speech.
+                Each answer incurs an additional API cost (~$0.015 per 1,000 characters with <code>gpt-4o-mini-tts</code>).
+              </div>
+            </div>
+            <label className="toggle-wrapper">
+              <input type="checkbox" checked={!!s.voiceFeedback}
+                onChange={e => setS({ ...s, voiceFeedback: e.target.checked })} />
+              <span className="toggle-track" />
+            </label>
+          </div>
         </div>
       </div>
 

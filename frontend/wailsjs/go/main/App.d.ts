@@ -94,6 +94,8 @@ export function SendAnnouncement(arg1:string,arg2:string):Promise<void>;
 
 export function SendShoutout(arg1:string):Promise<void>;
 
+export function SpeakAnswer(arg1:string):Promise<string>;
+
 export function StartLogin():Promise<string>;
 
 export function StartRaid(arg1:string):Promise<void>;

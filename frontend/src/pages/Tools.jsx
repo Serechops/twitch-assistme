@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import ReactMarkdown from 'react-markdown'
 import {
   SendAnnouncement,
   SendShoutout,
@@ -7,6 +8,8 @@ import {
   AskGameGuide,
   ClearGameSession,
   GetMyChannelInfo,
+  SpeakAnswer,
+  GetSettings,
 } from '../../wailsjs/go/main/App'
 
 const ANNOUNCEMENT_COLORS = [
@@ -253,12 +256,42 @@ function GameGuideSection() {
   const [busy, setBusy]           = useState(false)
   const [error, setError]         = useState('')
   const [gameName, setGameName]   = useState('')
+  const [voiceFeedback, setVoiceFeedback] = useState(false)
+  const audioRef = useRef(null)
 
   useEffect(() => {
     GetMyChannelInfo()
       .then(info => { if (info?.gameName) setGameName(info.gameName) })
       .catch(() => {})
+    GetSettings()
+      .then(s => setVoiceFeedback(!!s.voiceFeedback))
+      .catch(() => {})
+    function onSettingsChanged() {
+      GetSettings().then(s => setVoiceFeedback(!!s.voiceFeedback)).catch(() => {})
+    }
+    window.addEventListener('settings:changed', onSettingsChanged)
+    return () => window.removeEventListener('settings:changed', onSettingsChanged)
   }, [])
+
+  async function playTTS(text) {
+    if (audioRef.current) {
+      audioRef.current.pause()
+      audioRef.current = null
+    }
+    try {
+      const b64   = await SpeakAnswer(text)
+      const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0))
+      const blob  = new Blob([bytes], { type: 'audio/mpeg' })
+      const url   = URL.createObjectURL(blob)
+      const audio = new Audio(url)
+      audioRef.current = audio
+      audio.onended = () => { audioRef.current = null; URL.revokeObjectURL(url) }
+      audio.onerror = () => { audioRef.current = null; URL.revokeObjectURL(url) }
+      await audio.play()
+    } catch (e) {
+      console.error('TTS playback error:', e)
+    }
+  }
 
   async function handleAsk() {
     setError('')
@@ -269,7 +302,9 @@ function GameGuideSection() {
     setBusy(true)
     try {
       const result = await AskGameGuide(q)
-      setMessages(prev => [...prev, { role: 'assistant', text: result.answer, sources: result.sources || [] }])
+      const msg = { role: 'assistant', text: result.answer, sources: result.sources || [] }
+      setMessages(prev => [...prev, msg])
+      if (voiceFeedback) playTTS(result.answer)
     } catch (e) {
       setError(String(e))
       setMessages(prev => prev.slice(0, -1)) // remove the user bubble on error
@@ -326,11 +361,20 @@ function GameGuideSection() {
                 borderRadius: 10,
                 padding: '8px 12px',
                 fontSize: 13,
-                whiteSpace: 'pre-wrap',
                 wordBreak: 'break-word',
               }}
             >
-              <div>{msg.text}</div>
+              {msg.role === 'assistant'
+                ? <ReactMarkdown
+                    components={{
+                      a: ({ href, children }) => (
+                        <a href={href} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>{children}</a>
+                      ),
+                      p: ({ children }) => <p style={{ margin: '4px 0' }}>{children}</p>,
+                    }}
+                  >{msg.text}</ReactMarkdown>
+                : <div>{msg.text}</div>
+              }
               {msg.sources && msg.sources.length > 0 && (
                 <div style={{ marginTop: 6, borderTop: '1px solid rgba(255,255,255,0.15)', paddingTop: 6, fontSize: 11, display: 'flex', flexDirection: 'column', gap: 3 }}>
                   <span style={{ opacity: 0.7 }}>Sources:</span>

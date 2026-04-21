@@ -463,12 +463,13 @@ func (a *App) GetConnectionStatus() string {
 
 // SettingsDTO is the data transferred to/from the frontend for settings.
 type SettingsDTO struct {
-	SoundEnabled bool    `json:"soundEnabled"`
-	SoundPath    string  `json:"soundPath"`
-	SoundVolume  float64 `json:"soundVolume"`
-	IgnoreOwn    bool    `json:"ignoreOwn"`
-	CooldownMs   int64   `json:"cooldownMs"`
-	OpenAIAPIKey string  `json:"openAIApiKey"`
+	SoundEnabled  bool    `json:"soundEnabled"`
+	SoundPath     string  `json:"soundPath"`
+	SoundVolume   float64 `json:"soundVolume"`
+	IgnoreOwn     bool    `json:"ignoreOwn"`
+	CooldownMs    int64   `json:"cooldownMs"`
+	OpenAIAPIKey  string  `json:"openAIApiKey"`
+	VoiceFeedback bool    `json:"voiceFeedback"`
 }
 
 // GetSettings loads current settings from the database.
@@ -493,12 +494,13 @@ func (a *App) GetSettings() SettingsDTO {
 	}
 
 	return SettingsDTO{
-		SoundEnabled: getBool("chat_sound_enabled"),
-		SoundPath:    getString("chat_sound_path"),
-		SoundVolume:  getFloat("chat_sound_volume"),
-		IgnoreOwn:    getBool("chat_filter_ignore_own"),
-		CooldownMs:   getInt64("chat_filter_cooldown_ms"),
-		OpenAIAPIKey: getString("openai_api_key"),
+		SoundEnabled:  getBool("chat_sound_enabled"),
+		SoundPath:     getString("chat_sound_path"),
+		SoundVolume:   getFloat("chat_sound_volume"),
+		IgnoreOwn:     getBool("chat_filter_ignore_own"),
+		CooldownMs:    getInt64("chat_filter_cooldown_ms"),
+		OpenAIAPIKey:  getString("openai_api_key"),
+		VoiceFeedback: getBool("voice_feedback_enabled"),
 	}
 }
 
@@ -517,6 +519,7 @@ func (a *App) SaveSettings(s SettingsDTO) error {
 		"chat_filter_ignore_own":  boolStr(s.IgnoreOwn),
 		"chat_filter_cooldown_ms": strconv.FormatInt(s.CooldownMs, 10),
 		"openai_api_key":          s.OpenAIAPIKey,
+		"voice_feedback_enabled":  boolStr(s.VoiceFeedback),
 	}
 
 	// Read old key before saving so we can detect a change.
@@ -1377,7 +1380,55 @@ func (a *App) ProcessVoiceCommand(audioBase64 string) (*AICommandResultDTO, erro
 		return nil, fmt.Errorf("audio data is empty")
 	}
 
-	result, err := processor.ProcessAudio(a.ctx, audioBytes)
+	// Transcribe first so we can route game guide trigger phrases before the
+	// voice command AI sees them.
+	transcript, err := processor.Transcribe(a.ctx, audioBytes)
+	if err != nil {
+		return nil, fmt.Errorf("transcription: %w", err)
+	}
+	if strings.TrimSpace(transcript) == "" {
+		return &AICommandResultDTO{Transcript: "", Message: "No speech detected."}, nil
+	}
+
+	// Game guide trigger phrases: spoken prefix routes question to AskGameGuide.
+	// Handles Whisper variations: "game guide,", "GameGuide,", "game guide ", "GameGuide " etc.
+	guidedQuestion := ""
+	transcriptLower := strings.ToLower(transcript)
+	// Strip any optional space between "game" and "guide", followed by optional punctuation and whitespace
+	for _, prefix := range []string{"game guide", "gameguide"} {
+		if strings.HasPrefix(transcriptLower, prefix) {
+			rest := strings.TrimSpace(transcript[len(prefix):])
+			// Strip leading punctuation (, : .) that Whisper may insert after the trigger
+			rest = strings.TrimLeft(rest, ",:. ")
+			rest = strings.TrimSpace(rest)
+			if rest != "" {
+				guidedQuestion = rest
+				break
+			}
+		}
+	}
+
+	if guidedQuestion != "" {
+		info, infoErr := a.GetMyChannelInfo()
+		gameName, streamTitle := "", ""
+		if infoErr == nil {
+			gameName = info.GameName
+			streamTitle = info.Title
+		}
+		if gameName == "" {
+			return nil, fmt.Errorf("could not detect the current game from your stream — please set a game category on Twitch and try again")
+		}
+		guideResult, guideErr := processor.AskGameGuide(a.ctx, guidedQuestion, gameName, streamTitle)
+		if guideErr != nil {
+			return nil, guideErr
+		}
+		return &AICommandResultDTO{
+			Transcript: transcript,
+			Message:    guideResult.Answer,
+		}, nil
+	}
+
+	result, err := processor.ProcessCommand(a.ctx, transcript)
 	if err != nil {
 		return nil, err
 	}
@@ -1727,4 +1778,22 @@ func (a *App) ClearGameSession() error {
 	}
 	processor.ClearGameSession()
 	return nil
+}
+
+// SpeakAnswer converts a game guide answer to speech and returns the MP3 audio as a base64 string.
+// The frontend can decode this into a Blob URL and play it directly in the browser.
+func (a *App) SpeakAnswer(text string) (string, error) {
+	if strings.TrimSpace(text) == "" {
+		return "", fmt.Errorf("text cannot be empty")
+	}
+	processor, err := a.getAIProcessor()
+	if err != nil {
+		return "", err
+	}
+	audio, err := processor.SpeakText(a.ctx, text,
+		"Speak like a knowledgeable but casual gaming guide. Be clear and concise.")
+	if err != nil {
+		return "", err
+	}
+	return base64.StdEncoding.EncodeToString(audio), nil
 }

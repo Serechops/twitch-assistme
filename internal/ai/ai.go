@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"strings"
 	"sync"
 
@@ -80,18 +81,18 @@ func NewProcessor(apiKey string, handlers ActionHandlers) *Processor {
 // ProcessAudio transcribes the given audio bytes (WebM/Opus from the browser) and
 // executes any Twitch management commands the AI decides to run.
 func (p *Processor) ProcessAudio(ctx context.Context, audioData []byte) (*CommandResult, error) {
-	transcript, err := p.transcribe(ctx, audioData)
+	transcript, err := p.Transcribe(ctx, audioData)
 	if err != nil {
 		return nil, fmt.Errorf("transcription: %w", err)
 	}
 	if strings.TrimSpace(transcript) == "" {
 		return &CommandResult{Transcript: "", Message: "No speech detected."}, nil
 	}
-	return p.processCommand(ctx, transcript)
+	return p.ProcessCommand(ctx, transcript)
 }
 
-// transcribe sends audio to OpenAI Whisper and returns the transcript text.
-func (p *Processor) transcribe(ctx context.Context, audioData []byte) (string, error) {
+// Transcribe sends audio to OpenAI Whisper and returns the transcript text.
+func (p *Processor) Transcribe(ctx context.Context, audioData []byte) (string, error) {
 	resp, err := p.client.Audio.Transcriptions.New(ctx, openai.AudioTranscriptionNewParams{
 		File:  &namedReader{Reader: bytes.NewReader(audioData), filename: "audio.webm"},
 		Model: openai.AudioModelWhisper1,
@@ -121,9 +122,9 @@ When you receive a voice command, decide which action(s) to take and call the ap
 Be concise and action-oriented. If no action is appropriate, explain why.
 Always confirm what you did in a brief, friendly response.`
 
-// processCommand sends the transcript to the Responses API, executes any tool calls,
+// ProcessCommand sends the transcript to the Responses API, executes any tool calls,
 // and returns a human-readable result. It uses previous_response_id for conversation state.
-func (p *Processor) processCommand(ctx context.Context, transcript string) (*CommandResult, error) {
+func (p *Processor) ProcessCommand(ctx context.Context, transcript string) (*CommandResult, error) {
 	p.mu.Lock()
 	prevID := p.voiceSessionID
 	p.mu.Unlock()
@@ -206,20 +207,23 @@ func (p *Processor) AskGameGuide(ctx context.Context, question, gameName, stream
 		game = "an unknown game"
 	}
 
-	instructions := fmt.Sprintf(
-		"You are a game guide assistant embedded in a Twitch streaming dashboard. "+
-			"The streamer is currently playing %s (stream title: %q). "+
-			"Your ONLY job is to answer gameplay questions about %s. "+
-			"You MUST use the web_search tool to look up accurate information before responding. "+
-			"Never refuse gameplay questions — always search and answer. "+
-			"Be concise and practical. Always include sources.",
-		game, streamTitle, game,
+	// Rewrite the question so the game name is part of the sentence itself.
+	// This ensures the web search query includes the game name rather than
+	// treating the context bracket as metadata the search ignores.
+	augmentedQuestion := fmt.Sprintf(
+		"In the video game %s: %s",
+		game, question,
 	)
 
 	reqParams := responses.ResponseNewParams{
-		Model:        openai.ChatModelGPT4o,
-		Instructions: param.NewOpt(instructions),
-		Input:        responses.ResponseNewParamsInputUnion{OfString: param.NewOpt(question)},
+		Model: openai.ChatModelGPT4_1Mini,
+		Instructions: param.NewOpt(
+			"You are a game guide assistant. The user is asking about a specific video game. " +
+				"When searching the web, ALWAYS include the game name in your search query (e.g. search for 'Saugus Ironworks Fallout 4' not just 'Saugus Ironworks'). " +
+				"Answer ONLY based on in-game information from the search results, not real-world information. " +
+				"Do not include any preamble, disclaimers, or suggestions to seek other resources. " +
+				"Start your response with the answer. Always cite sources."),
+		Input: responses.ResponseNewParamsInputUnion{OfString: param.NewOpt(augmentedQuestion)},
 		Tools: []responses.ToolUnionParam{
 			responses.ToolParamOfWebSearchPreview(responses.WebSearchToolTypeWebSearchPreview),
 		},
@@ -250,6 +254,23 @@ func (p *Processor) AskGameGuide(ctx context.Context, question, gameName, stream
 	p.mu.Unlock()
 
 	answer := resp.OutputText()
+
+	// Detect refusal responses — if the model refuses despite forced web search,
+	// clear the session and return an error so the user can retry.
+	answerLower := strings.ToLower(strings.TrimSpace(answer))
+	refusalPhrases := []string{
+		"i can't", "i cannot", "i'm not able", "i am not able",
+		"i'm unable", "i am unable", "i don't", "i do not",
+		"as an ai", "i'm just an ai",
+	}
+	for _, phrase := range refusalPhrases {
+		if strings.HasPrefix(answerLower, phrase) {
+			p.mu.Lock()
+			p.gameSessionID = ""
+			p.mu.Unlock()
+			return nil, fmt.Errorf("model refused to answer — please try again")
+		}
+	}
 
 	// If the model produced no web_search_call items, the search was skipped.
 	// Clear the session so the next question starts clean.
@@ -301,6 +322,33 @@ func (p *Processor) ClearGameSession() {
 	p.mu.Lock()
 	p.gameSessionID = ""
 	p.mu.Unlock()
+}
+
+// SpeakText converts text to speech using gpt-4o-mini-tts and returns the raw MP3 bytes.
+// The caller may pass an optional personality instruction (e.g. "speak like a casual game guide").
+func (p *Processor) SpeakText(ctx context.Context, text, voiceInstruction string) ([]byte, error) {
+	if text == "" {
+		return nil, fmt.Errorf("speak: text is empty")
+	}
+	params := openai.AudioSpeechNewParams{
+		Model:          openai.SpeechModelGPT4oMiniTTS,
+		Voice:          openai.AudioSpeechNewParamsVoiceSage,
+		Input:          text,
+		ResponseFormat: openai.AudioSpeechNewParamsResponseFormatMP3,
+	}
+	if voiceInstruction != "" {
+		params.Instructions = param.NewOpt(voiceInstruction)
+	}
+	resp, err := p.client.Audio.Speech.New(ctx, params)
+	if err != nil {
+		return nil, fmt.Errorf("speak: %w", err)
+	}
+	defer resp.Body.Close()
+	audio, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("speak: reading audio: %w", err)
+	}
+	return audio, nil
 }
 
 // executeTool routes a tool call name to the appropriate handler.

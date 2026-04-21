@@ -526,6 +526,7 @@ export namespace main {
 	    ignoreOwn: boolean;
 	    cooldownMs: number;
 	    openAIApiKey: string;
+	    voiceFeedback: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new SettingsDTO(source);
@@ -539,6 +540,7 @@ export namespace main {
 	        this.ignoreOwn = source["ignoreOwn"];
 	        this.cooldownMs = source["cooldownMs"];
 	        this.openAIApiKey = source["openAIApiKey"];
+	        this.voiceFeedback = source["voiceFeedback"];
 	    }
 	}
 	export class UserInfo {

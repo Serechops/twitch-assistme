@@ -2,6 +2,9 @@ build/bin
 node_modules
 frontend/dist
 
+# Compiled binaries
+*.exe
+
 # Environment / secrets — never commit these
 .env
 .env.local

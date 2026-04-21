@@ -37,6 +37,7 @@ func main() {
 			WindowIsTranslucent:  false,
 			DisableWindowIcon:    false,
 		},
+		EnableDefaultContextMenu: true,
 	})
 
 	if err != nil {
