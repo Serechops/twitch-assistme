@@ -82,9 +82,7 @@ export default function VoiceCommandOverlay({ voiceState, result, error, dismiss
               <div className="vc-message">
                 <ReactMarkdown
                   components={{
-                    a: ({ href, children }) => (
-                      <a href={href} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>{children}</a>
-                    ),
+                    a: ({ children }) => <span>{children}</span>,
                     p: ({ children }) => <span>{children}</span>,
                   }}
                 >{result.message}</ReactMarkdown>

@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"regexp"
 	"strings"
 	"sync"
 
@@ -17,6 +18,10 @@ import (
 	"github.com/openai/openai-go/packages/param"
 	"github.com/openai/openai-go/responses"
 )
+
+// sourcesFooterRe matches a "Sources:" or "Source:" section the model may append
+// at the end of game guide responses, along with everything that follows it.
+var sourcesFooterRe = regexp.MustCompile(`(?im)^sources?:\s*\n?`)
 
 // namedReader wraps bytes.Reader to provide a filename hint to the multipart encoder,
 // allowing OpenAI Whisper to determine the audio format from the file extension.
@@ -222,7 +227,9 @@ func (p *Processor) AskGameGuide(ctx context.Context, question, gameName, stream
 				"When searching the web, ALWAYS include the game name in your search query (e.g. search for 'Saugus Ironworks Fallout 4' not just 'Saugus Ironworks'). " +
 				"Answer ONLY based on in-game information from the search results, not real-world information. " +
 				"Do not include any preamble, disclaimers, or suggestions to seek other resources. " +
-				"Start your response with the answer. Always cite sources."),
+				"Write in a clear walkthrough style — step-by-step where applicable, concise and direct. " +
+				"Do NOT include any URLs, hyperlinks, source citations, or references of any kind. " +
+				"Start your response with the answer immediately."),
 		Input: responses.ResponseNewParamsInputUnion{OfString: param.NewOpt(augmentedQuestion)},
 		Tools: []responses.ToolUnionParam{
 			responses.ToolParamOfWebSearchPreview(responses.WebSearchToolTypeWebSearchPreview),
@@ -288,25 +295,12 @@ func (p *Processor) AskGameGuide(ctx context.Context, question, gameName, stream
 		return nil, fmt.Errorf("web search was not performed — please try again")
 	}
 
-	// Extract URL citations from message content annotations.
-	seen := map[string]bool{}
-	var sources []GameSource
-	for _, item := range resp.Output {
-		if item.Type == "message" {
-			for _, content := range item.Content {
-				if content.Type == "output_text" {
-					for _, ann := range content.Annotations {
-						if ann.Type == "url_citation" && !seen[ann.URL] {
-							seen[ann.URL] = true
-							sources = append(sources, GameSource{Title: ann.Title, URL: ann.URL})
-						}
-					}
-				}
-			}
-		}
+	// Strip any "Sources:" footer the model appends despite instructions.
+	if idx := sourcesFooterRe.FindStringIndex(answer); idx != nil {
+		answer = strings.TrimSpace(answer[:idx[0]])
 	}
 
-	return &GameAssistantResult{Answer: answer, Sources: sources}, nil
+	return &GameAssistantResult{Answer: answer, Sources: nil}, nil
 }
 
 // ClearVoiceSession resets the voice command conversation thread so the next

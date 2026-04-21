@@ -123,6 +123,7 @@ export namespace main {
 	    title: string;
 	    gameID: string;
 	    gameName: string;
+	    boxArtURL: string;
 	    language: string;
 	    tags: string[];
 	
@@ -135,6 +136,7 @@ export namespace main {
 	        this.title = source["title"];
 	        this.gameID = source["gameID"];
 	        this.gameName = source["gameName"];
+	        this.boxArtURL = source["boxArtURL"];
 	        this.language = source["language"];
 	        this.tags = source["tags"];
 	    }

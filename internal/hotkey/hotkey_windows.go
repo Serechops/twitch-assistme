@@ -248,6 +248,13 @@ func (m *Manager) start() error {
 	return <-ready
 }
 
+// handleMouseMsg processes a WH_MOUSE_LL hook message.
+// lParam is a Windows OS pointer to MSLLHOOKSTRUCT — it is not a Go heap
+// pointer and will not be moved by the GC, so the uintptr→unsafe.Pointer
+// conversion below is safe. //go:nocheckptr suppresses the false-positive
+// from the unsafeptr analyser.
+//
+//go:nocheckptr
 func (m *Manager) handleMouseMsg(wParam, lParam uintptr) {
 	m.mu.Lock()
 	cfg := m.cfg

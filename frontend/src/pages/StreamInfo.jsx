@@ -6,6 +6,7 @@ export default function StreamInfo() {
   const [title, setTitle] = useState('')
   const [gameID, setGameID] = useState('')
   const [gameName, setGameName] = useState('')
+  const [gameBoxArtURL, setGameBoxArtURL] = useState('')
   const [language, setLanguage] = useState('')
   const [tags, setTags] = useState([])
   const [tagInput, setTagInput] = useState('')
@@ -26,6 +27,7 @@ export default function StreamInfo() {
     setTitle(info.title)
     setGameID(info.gameID)
     setGameName(info.gameName)
+    setGameBoxArtURL(info.boxArtURL || '')
     setLanguage(info.language || '')
     setTags(info.tags || [])
   }, [])
@@ -78,6 +80,7 @@ export default function StreamInfo() {
   function selectCategory(cat) {
     setGameID(cat.id)
     setGameName(cat.name)
+    setGameBoxArtURL(cat.boxArtURL || '')
     setCategoryQuery('')
     setCategoryResults([])
     setShowDropdown(false)
@@ -86,6 +89,7 @@ export default function StreamInfo() {
   function clearCategory() {
     setGameID('')
     setGameName('')
+    setGameBoxArtURL('')
     setCategoryQuery('')
   }
 
@@ -130,36 +134,78 @@ export default function StreamInfo() {
     )
   }
 
+  const artSrc = gameBoxArtURL
+    ? gameBoxArtURL.replace('{width}', '188').replace('{height}', '250')
+    : null
+
   return (
     <div className="stream-info-page">
-      <h1 className="page-title">Stream Information</h1>
+      <div className="si-page-header">
+        <h1 className="page-title" style={{ margin: 0 }}>Stream Information</h1>
+        <p className="si-page-subtitle">Manage your live channel details</p>
+      </div>
 
       {error && <div className="notice error">{error}</div>}
 
-      <div className="card">
-        <div className="settings-group">
+      {/* Live preview hero */}
+      {(gameName || title) && (
+        <div className="si-hero">
+          {artSrc && (
+            <img className="si-hero-art" src={artSrc} alt={gameName} />
+          )}
+          <div className="si-hero-meta">
+            {gameName && <div className="si-hero-game">{gameName}</div>}
+            <div className="si-hero-title">{title || <span style={{ opacity: 0.4 }}>No title set</span>}</div>
+            {tags.length > 0 && (
+              <div className="si-hero-tags">
+                {tags.map((t, i) => (
+                  <span key={i} className="si-tag si-tag--hero">{t}</span>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
-          <div className="setting-row" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 6 }}>
-            <div className="setting-label">Stream Title</div>
+      <div className="card si-card">
+
+        {/* Stream Title */}
+        <div className="si-section">
+          <div className="si-section-label">Stream Title</div>
+          <div className="si-section-body">
             <input
-              className="text-input"
+              className="text-input si-title-input"
               type="text"
               value={title}
               maxLength={140}
               onChange={e => setTitle(e.target.value)}
-              placeholder="Enter your stream title"
+              placeholder="Enter your stream title…"
             />
-            <span style={{ fontSize: 11, color: 'var(--text-muted)', alignSelf: 'flex-end' }}>
-              {title.length}/140
-            </span>
+            <span className="si-char-count">{title.length}/140</span>
           </div>
+        </div>
 
-          <div className="setting-row" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 6 }}>
-            <div className="setting-label">Category / Game</div>
+        <div className="si-divider" />
+
+        {/* Category / Game */}
+        <div className="si-section">
+          <div className="si-section-label">Category / Game</div>
+          <div className="si-section-body">
             {gameName ? (
               <div className="si-selected-category">
-                <span className="si-category-name">{gameName}</span>
-                <button className="btn btn-secondary btn-sm" onClick={clearCategory}>x Change</button>
+                {gameBoxArtURL && (
+                  <img
+                    className="si-selected-art"
+                    src={gameBoxArtURL.replace('{width}', '60').replace('{height}', '80')}
+                    alt={gameName}
+                    onError={e => { e.currentTarget.style.display = 'none' }}
+                  />
+                )}
+                <div className="si-selected-details">
+                  <span className="si-category-name">{gameName}</span>
+                  {gameID && <span className="si-category-id">ID {gameID}</span>}
+                </div>
+                <button className="btn btn-secondary btn-sm si-change-btn" onClick={clearCategory}>Change</button>
               </div>
             ) : (
               <div className="si-category-search" ref={dropdownRef}>
@@ -168,7 +214,7 @@ export default function StreamInfo() {
                   type="text"
                   value={categoryQuery}
                   onChange={e => setCategoryQuery(e.target.value)}
-                  placeholder="Search for a game or category..."
+                  placeholder="Search for a game or category…"
                 />
                 {showDropdown && categoryResults.length > 0 && (
                   <ul className="si-category-dropdown">
@@ -192,32 +238,43 @@ export default function StreamInfo() {
               </div>
             )}
           </div>
+        </div>
 
-          <div className="setting-row" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 6 }}>
-            <div className="setting-label">
-              Language <span style={{ fontWeight: 400, color: 'var(--text-muted)', fontSize: 12 }}>(ISO 639-1, e.g. "en")</span>
-            </div>
+        <div className="si-divider" />
+
+        {/* Language */}
+        <div className="si-section si-section--inline">
+          <div className="si-section-label">
+            Language
+            <span className="si-section-hint">ISO 639-1 code, e.g. "en"</span>
+          </div>
+          <div className="si-section-body">
             <input
-              className="text-input"
+              className="text-input si-lang-input"
               type="text"
               value={language}
               maxLength={5}
-              style={{ width: 160 }}
               onChange={e => setLanguage(e.target.value.toLowerCase())}
               placeholder="en"
             />
           </div>
+        </div>
 
-          <div className="setting-row" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 8 }}>
-            <div className="setting-label">
-              Tags <span style={{ fontWeight: 400, color: 'var(--text-muted)', fontSize: 12 }}>({tags.length}/10 - letters and numbers only - 25 chars max)</span>
-            </div>
+        <div className="si-divider" />
+
+        {/* Tags */}
+        <div className="si-section">
+          <div className="si-section-label">
+            Tags
+            <span className="si-section-hint">{tags.length}/10 · letters &amp; numbers only · 25 chars max</span>
+          </div>
+          <div className="si-section-body">
             {tags.length > 0 && (
               <div className="si-tags-row">
                 {tags.map((t, i) => (
                   <span key={i} className="si-tag">
                     {t}
-                    <button className="si-tag-remove" onClick={() => removeTag(i)}>x</button>
+                    <button className="si-tag-remove" onClick={() => removeTag(i)} title="Remove tag">✕</button>
                   </span>
                 ))}
               </div>
@@ -232,25 +289,27 @@ export default function StreamInfo() {
                   maxLength={25}
                   onChange={e => { setTagInput(e.target.value); setTagError('') }}
                   onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addTag() } }}
-                  placeholder="Add tag..."
+                  placeholder="Add a tag…"
                 />
                 <button className="btn btn-secondary btn-sm" onClick={addTag}>Add</button>
               </div>
             )}
-            {tagError && <p className="polls-empty" style={{ color: 'var(--red)', margin: 0 }}>{tagError}</p>}
+            {tagError && <p className="si-field-error">{tagError}</p>}
           </div>
-
         </div>
 
-        <div className="poll-actions">
+        <div className="si-divider" />
+
+        <div className="si-actions">
           <button
             className={`btn btn-primary${saved ? ' btn--saved' : ''}`}
             onClick={handleSave}
             disabled={saving || saved}
           >
-            {saving ? 'Saving...' : saved ? 'Saved!' : 'Save Changes'}
+            {saving ? 'Saving…' : saved ? '✓ Saved!' : 'Save Changes'}
           </button>
         </div>
+
       </div>
     </div>
   )

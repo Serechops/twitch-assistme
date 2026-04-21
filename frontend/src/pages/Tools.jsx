@@ -367,26 +367,12 @@ function GameGuideSection() {
               {msg.role === 'assistant'
                 ? <ReactMarkdown
                     components={{
-                      a: ({ href, children }) => (
-                        <a href={href} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>{children}</a>
-                      ),
+                      a: ({ children }) => <span>{children}</span>,
                       p: ({ children }) => <p style={{ margin: '4px 0' }}>{children}</p>,
                     }}
                   >{msg.text}</ReactMarkdown>
                 : <div>{msg.text}</div>
               }
-              {msg.sources && msg.sources.length > 0 && (
-                <div style={{ marginTop: 6, borderTop: '1px solid rgba(255,255,255,0.15)', paddingTop: 6, fontSize: 11, display: 'flex', flexDirection: 'column', gap: 3 }}>
-                  <span style={{ opacity: 0.7 }}>Sources:</span>
-                  {msg.sources.map((s, si) => (
-                    <a key={si} href={s.url} target="_blank" rel="noreferrer"
-                      style={{ color: 'var(--accent)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                      title={s.url}>
-                      {s.title || s.url}
-                    </a>
-                  ))}
-                </div>
-              )}
             </div>
           ))}
           {busy && (

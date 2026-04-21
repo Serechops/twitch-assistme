@@ -1,3 +1,5 @@
+//go:build windows
+
 // Package tray manages the Windows system tray icon.
 package tray
 

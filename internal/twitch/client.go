@@ -461,6 +461,40 @@ func GetStreamsByCategory(clientID, accessToken, gameID string, first int) ([]Li
 	return payload.Data, nil
 }
 
+// GetGameByID returns the box art URL template for a single game ID.
+// Returns empty string (no error) when gameID is empty or the game is not found.
+func GetGameByID(clientID, accessToken, gameID string) (string, error) {
+	if gameID == "" {
+		return "", nil
+	}
+	url := fmt.Sprintf("%s/games?id=%s", helixBase, gameID)
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Client-Id", clientID)
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("twitch: get game: %w", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return "", nil // non-fatal
+	}
+	var payload struct {
+		Data []struct {
+			BoxArtURL string `json:"box_art_url"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil || len(payload.Data) == 0 {
+		return "", nil
+	}
+	return payload.Data[0].BoxArtURL, nil
+}
+
 // GetChannelInfo returns channel metadata (title, current game) for a broadcaster.
 func GetChannelInfo(clientID, accessToken, broadcasterID string) (*ChannelInfo, error) {
 	url := fmt.Sprintf("%s/channels?broadcaster_id=%s", helixBase, broadcasterID)

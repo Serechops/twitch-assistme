@@ -1019,11 +1019,12 @@ func (a *App) CancelRaid() error {
 
 // ChannelInfoDTO is the frontend-facing channel info structure.
 type ChannelInfoDTO struct {
-	Title    string   `json:"title"`
-	GameID   string   `json:"gameID"`
-	GameName string   `json:"gameName"`
-	Language string   `json:"language"`
-	Tags     []string `json:"tags"`
+	Title     string   `json:"title"`
+	GameID    string   `json:"gameID"`
+	GameName  string   `json:"gameName"`
+	BoxArtURL string   `json:"boxArtURL"`
+	Language  string   `json:"language"`
+	Tags      []string `json:"tags"`
 }
 
 // CategoryDTO is a game/category search result.
@@ -1047,12 +1048,14 @@ func (a *App) GetMyChannelInfo() (*ChannelInfoDTO, error) {
 	if tags == nil {
 		tags = []string{}
 	}
+	boxArtURL, _ := twitch.GetGameByID(twitchClientID, row.AccessToken, info.GameID)
 	return &ChannelInfoDTO{
-		Title:    info.Title,
-		GameID:   info.GameID,
-		GameName: info.GameName,
-		Language: info.BroadcasterLanguage,
-		Tags:     tags,
+		Title:     info.Title,
+		GameID:    info.GameID,
+		GameName:  info.GameName,
+		BoxArtURL: boxArtURL,
+		Language:  info.BroadcasterLanguage,
+		Tags:      tags,
 	}, nil
 }
 
