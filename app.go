@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -13,6 +14,8 @@ import (
 	"ai-ssistme/internal/ai"
 	"ai-ssistme/internal/auth"
 	"ai-ssistme/internal/db"
+	"ai-ssistme/internal/hotkey"
+	"ai-ssistme/internal/tray"
 	twitch "ai-ssistme/internal/twitch"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -37,6 +40,7 @@ type App struct {
 	eventSubCancel context.CancelFunc
 
 	aiProcessor *ai.Processor
+	hotkeyMgr   *hotkey.Manager
 }
 
 // NewApp creates a new App instance.
@@ -68,6 +72,23 @@ func (a *App) startup(ctx context.Context) {
 		return
 	}
 	a.database = d
+
+	// Initialise global hotkey manager. Load saved config or fall back to default.
+	a.hotkeyMgr = hotkey.New(func() {
+		// Do NOT show the window — fire the event silently so recording
+		// starts in the background without snapping focus away from the game.
+		runtime.EventsEmit(a.ctx, "voice:trigger")
+	})
+	cfg := hotkey.DefaultConfig()
+	if raw, dbErr := a.database.GetSetting("voice_hotkey"); dbErr == nil && raw != "" {
+		var loaded hotkey.Config
+		if jsonErr := json.Unmarshal([]byte(raw), &loaded); jsonErr == nil {
+			cfg = loaded
+		}
+	}
+	if hkErr := a.hotkeyMgr.Update(cfg); hkErr != nil {
+		runtime.LogWarningf(ctx, "Global hotkey registration failed: %v", hkErr)
+	}
 }
 
 // domReady is called once the frontend DOM is ready to receive events.
@@ -136,12 +157,27 @@ func (a *App) domReady(ctx context.Context) {
 	if err := a.ConnectEventSub(); err != nil {
 		runtime.LogWarningf(a.ctx, "Auto-connect EventSub on startup failed: %v", err)
 	}
+
+	// Start the system tray icon. Runs in its own goroutine; the tray
+	// "Show Window" item brings the window back, and "Quit" exits cleanly.
+	go tray.Run(tray.Callbacks{
+		Show: func() {
+			runtime.WindowShow(a.ctx)
+		},
+		Quit: func() {
+			runtime.Quit(a.ctx)
+		},
+	})
 }
 
 func (a *App) shutdown(ctx context.Context) {
 	if a.eventSubCancel != nil {
 		a.eventSubCancel()
 	}
+	if a.hotkeyMgr != nil {
+		a.hotkeyMgr.Stop()
+	}
+	tray.Stop()
 	if a.database != nil {
 		a.database.Close()
 	}
@@ -463,13 +499,14 @@ func (a *App) GetConnectionStatus() string {
 
 // SettingsDTO is the data transferred to/from the frontend for settings.
 type SettingsDTO struct {
-	SoundEnabled  bool    `json:"soundEnabled"`
-	SoundPath     string  `json:"soundPath"`
-	SoundVolume   float64 `json:"soundVolume"`
-	IgnoreOwn     bool    `json:"ignoreOwn"`
-	CooldownMs    int64   `json:"cooldownMs"`
-	OpenAIAPIKey  string  `json:"openAIApiKey"`
-	VoiceFeedback bool    `json:"voiceFeedback"`
+	SoundEnabled  bool           `json:"soundEnabled"`
+	SoundPath     string         `json:"soundPath"`
+	SoundVolume   float64        `json:"soundVolume"`
+	IgnoreOwn     bool           `json:"ignoreOwn"`
+	CooldownMs    int64          `json:"cooldownMs"`
+	OpenAIAPIKey  string         `json:"openAIApiKey"`
+	VoiceFeedback bool           `json:"voiceFeedback"`
+	HotkeyConfig  *hotkey.Config `json:"hotkeyConfig,omitempty"`
 }
 
 // GetSettings loads current settings from the database.
@@ -501,6 +538,19 @@ func (a *App) GetSettings() SettingsDTO {
 		CooldownMs:    getInt64("chat_filter_cooldown_ms"),
 		OpenAIAPIKey:  getString("openai_api_key"),
 		VoiceFeedback: getBool("voice_feedback_enabled"),
+		HotkeyConfig: func() *hotkey.Config {
+			raw, _ := a.database.GetSetting("voice_hotkey")
+			if raw == "" {
+				def := hotkey.DefaultConfig()
+				return &def
+			}
+			var c hotkey.Config
+			if err := json.Unmarshal([]byte(raw), &c); err != nil {
+				def := hotkey.DefaultConfig()
+				return &def
+			}
+			return &c
+		}(),
 	}
 }
 
@@ -522,6 +572,13 @@ func (a *App) SaveSettings(s SettingsDTO) error {
 		"voice_feedback_enabled":  boolStr(s.VoiceFeedback),
 	}
 
+	// Persist hotkey config and re-register if it changed.
+	if s.HotkeyConfig != nil {
+		if raw, err := json.Marshal(s.HotkeyConfig); err == nil {
+			saves["voice_hotkey"] = string(raw)
+		}
+	}
+
 	// Read old key before saving so we can detect a change.
 	oldKey, _ := a.database.GetSetting("openai_api_key")
 
@@ -541,6 +598,13 @@ func (a *App) SaveSettings(s SettingsDTO) error {
 	if a.eventSubClient != nil {
 		a.eventSubClient.IgnoreOwnMessages = s.IgnoreOwn
 		a.eventSubClient.CooldownMs = s.CooldownMs
+	}
+
+	// Re-register global hotkey if config changed.
+	if s.HotkeyConfig != nil && a.hotkeyMgr != nil {
+		if err := a.hotkeyMgr.Update(*s.HotkeyConfig); err != nil {
+			runtime.LogWarningf(a.ctx, "Global hotkey re-registration failed: %v", err)
+		}
 	}
 	return nil
 }

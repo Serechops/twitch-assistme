@@ -1,7 +1,114 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { GetSettings, SaveSettings, SaveCustomSound, ClearCustomSound, GetSoundDataBase64, TestSound, GetUser } from '../../wailsjs/go/main/App'
 import { EventsOn } from '../../wailsjs/runtime/runtime'
 import twitchBanner from '../assets/images/twitch_banner.jpg'
+
+// ── Hotkey Recorder ──────────────────────────────────────────────────────────
+// Lets the user press a key combo or mouse button 3/4/5 to set the voice trigger.
+function HotkeyRecorder({ value, onChange }) {
+  const [recording, setRecording] = useState(false)
+  const [preview, setPreview]     = useState(null)
+  const overlayRef = useRef(null)
+
+  function labelFor(cfg) {
+    if (!cfg) return 'Ctrl+Shift+Space'
+    if (cfg.type === 'mouse') {
+      const names = { 3: 'Middle Button', 4: 'Button 4 (Back)', 5: 'Button 5 (Forward)' }
+      return `Mouse ${names[cfg.button] ?? `Button ${cfg.button}`}`
+    }
+    const mods = (cfg.modifiers || []).map(m =>
+      m === 'ctrl' ? 'Ctrl' : m === 'shift' ? 'Shift' : m === 'alt' ? 'Alt' : m === 'win' ? 'Win' : m
+    )
+    return [...mods, cfg.key].join('+')
+  }
+
+  function startRecording() {
+    setRecording(true)
+    setPreview(null)
+    setTimeout(() => overlayRef.current?.focus(), 50)
+  }
+
+  function stopRecording(cfg) {
+    setRecording(false)
+    if (cfg) {
+      setPreview(cfg)
+      onChange(cfg)
+    }
+  }
+
+  function onKeyDown(e) {
+    e.preventDefault()
+    if (e.key === 'Escape') { stopRecording(null); return }
+    // Ignore bare modifier keys
+    if (['Control','Shift','Alt','Meta'].includes(e.key)) return
+
+    const mods = []
+    if (e.ctrlKey)  mods.push('ctrl')
+    if (e.shiftKey) mods.push('shift')
+    if (e.altKey)   mods.push('alt')
+    if (e.metaKey)  mods.push('win')
+
+    let key = e.code
+    // Normalise key names
+    if (key.startsWith('Key'))      key = key.slice(3)       // KeyA → A
+    else if (key.startsWith('Digit')) key = key.slice(5)     // Digit1 → 1
+    else if (key === 'Space')       key = 'Space'
+    else if (key.startsWith('F') && !isNaN(key.slice(1))) key = key // F1–F12
+
+    stopRecording({ type: 'keyboard', modifiers: mods, key })
+  }
+
+  function onMouseDown(e) {
+    // Only capture non-primary buttons
+    if (e.button < 3) return
+    e.preventDefault()
+    stopRecording({ type: 'mouse', modifiers: [], key: '', button: e.button })
+  }
+
+  const current = preview ?? value
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+      <kbd style={{
+        background: 'var(--surface3, #2a2a2e)',
+        border: '1px solid var(--border)',
+        borderRadius: 6,
+        padding: '4px 10px',
+        fontSize: 13,
+        fontFamily: 'monospace',
+        color: 'var(--text)',
+        minWidth: 120,
+        textAlign: 'center',
+      }}>
+        {labelFor(current)}
+      </kbd>
+      {recording ? (
+        <div
+          ref={overlayRef}
+          tabIndex={0}
+          onKeyDown={onKeyDown}
+          onMouseDown={onMouseDown}
+          style={{
+            outline: '2px solid var(--accent)',
+            borderRadius: 6,
+            padding: '4px 12px',
+            fontSize: 13,
+            color: 'var(--accent)',
+            cursor: 'default',
+            userSelect: 'none',
+            animation: 'pulse 1s infinite',
+          }}
+        >
+          Press key combo or mouse button 3/4/5… (Esc to cancel)
+        </div>
+      ) : (
+        <button className="btn btn-secondary btn-sm" type="button" onClick={startRecording}>
+          Change
+        </button>
+      )}
+    </div>
+  )
+}
 
 export default function Settings() {
   const [s, setS] = useState(null)
@@ -258,6 +365,18 @@ export default function Settings() {
                 onChange={e => setS({ ...s, voiceFeedback: e.target.checked })} />
               <span className="toggle-track" />
             </label>
+          </div>
+
+          <div className="setting-row" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 6 }}>
+            <div className="setting-label">Voice Trigger Hotkey</div>
+            <div className="setting-description">
+              Global shortcut to start/stop voice recording — works even when the app is in the background.
+              Supports keyboard combos (with Ctrl/Shift/Alt/Win) or mouse buttons 3, 4, and 5.
+            </div>
+            <HotkeyRecorder
+              value={s.hotkeyConfig}
+              onChange={cfg => setS({ ...s, hotkeyConfig: cfg })}
+            />
           </div>
         </div>
       </div>

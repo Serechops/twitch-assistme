@@ -1,5 +1,6 @@
 import { useEffect, useRef, useCallback, useState } from 'react'
 import { ProcessVoiceCommand, SpeakAnswer, GetSettings } from '../../wailsjs/go/main/App'
+import { EventsOn, EventsOff } from '../../wailsjs/runtime/runtime'
 
 // States the voice command system can be in.
 export const VoiceState = {
@@ -217,18 +218,24 @@ export default function useVoiceCommand() {
     }
   }, [isSupported, startSilenceDetector, stopAndSubmit, stopSilenceDetector])
 
-  // Toggle: Ctrl+Shift+Space starts / stops recording.
+  // Global hotkey → Wails emits 'voice:trigger' → start/stop recording.
+  // The keyboard shortcut is now configured in Settings and registered globally
+  // by the Go backend, so it works even when the app is out of focus.
+  useEffect(() => {
+    const handleTrigger = () => {
+      if (voiceState === VoiceState.IDLE || voiceState === VoiceState.RESULT || voiceState === VoiceState.ERROR) {
+        startRecording()
+      } else if (voiceState === VoiceState.RECORDING) {
+        stopAndSubmit()
+      }
+    }
+    EventsOn('voice:trigger', handleTrigger)
+    return () => EventsOff('voice:trigger')
+  }, [voiceState, startRecording, stopAndSubmit])
+
+  // Escape key dismisses the overlay (in-app only — no global binding needed).
   useEffect(() => {
     const handleKeyDown = e => {
-      if (e.code === 'Space' && e.ctrlKey && e.shiftKey && !e.repeat) {
-        e.preventDefault()
-        if (voiceState === VoiceState.IDLE || voiceState === VoiceState.RESULT || voiceState === VoiceState.ERROR) {
-          startRecording()
-        } else if (voiceState === VoiceState.RECORDING) {
-          stopAndSubmit()
-        }
-      }
-      // Escape dismisses the overlay.
       if (e.code === 'Escape') {
         if (voiceState === VoiceState.RECORDING) {
           stopSilenceDetector()
@@ -238,10 +245,9 @@ export default function useVoiceCommand() {
         dismiss()
       }
     }
-
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [voiceState, startRecording, stopAndSubmit, stopSilenceDetector, dismiss])
+  }, [voiceState, dismiss, stopSilenceDetector])
 
   // Cleanup on unmount.
   useEffect(() => {

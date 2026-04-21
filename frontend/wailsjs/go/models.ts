@@ -1,3 +1,26 @@
+export namespace hotkey {
+	
+	export class Config {
+	    type: string;
+	    modifiers: string[];
+	    key: string;
+	    button: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new Config(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.type = source["type"];
+	        this.modifiers = source["modifiers"];
+	        this.key = source["key"];
+	        this.button = source["button"];
+	    }
+	}
+
+}
+
 export namespace main {
 	
 	export class AICommandResultDTO {
@@ -527,6 +550,7 @@ export namespace main {
 	    cooldownMs: number;
 	    openAIApiKey: string;
 	    voiceFeedback: boolean;
+	    hotkeyConfig?: hotkey.Config;
 	
 	    static createFrom(source: any = {}) {
 	        return new SettingsDTO(source);
@@ -541,7 +565,26 @@ export namespace main {
 	        this.cooldownMs = source["cooldownMs"];
 	        this.openAIApiKey = source["openAIApiKey"];
 	        this.voiceFeedback = source["voiceFeedback"];
+	        this.hotkeyConfig = this.convertValues(source["hotkeyConfig"], hotkey.Config);
 	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 	export class UserInfo {
 	    id: string;
