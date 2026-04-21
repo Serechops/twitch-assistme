@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -1844,10 +1845,53 @@ func (a *App) ClearGameSession() error {
 	return nil
 }
 
+// cleanTextForTTS strips Markdown and URL syntax so TTS reads natural prose.
+var (
+	reMdLink     = regexp.MustCompile(`\[([^\]]+)\]\([^)]*\)`)   // [text](url) → text
+	reBareURL    = regexp.MustCompile(`https?://\S+`)            // bare URLs → removed
+	reCodeFence  = regexp.MustCompile("(?s)```[^`]*```")         // fenced code blocks → removed
+	reInlineCode = regexp.MustCompile("`[^`]+`")                 // `inline code` → removed
+	reHeading    = regexp.MustCompile(`(?m)^#{1,6}\s+`)          // ## Heading → plain text
+	reBold       = regexp.MustCompile(`\*\*(.+?)\*\*|__(.+?)__`) // **bold** → inner text
+	reItalic     = regexp.MustCompile(`\*(.+?)\*|_(.+?)_`)       // *italic* → inner text
+	reBullet     = regexp.MustCompile(`(?m)^\s*[-*+]\s+`)        // bullet markers → removed
+	reOrdered    = regexp.MustCompile(`(?m)^\s*\d+\.\s+`)        // ordered list markers → removed
+	reHTMLTag    = regexp.MustCompile(`<[^>]+>`)                 // HTML tags → removed
+	reMultiSpace = regexp.MustCompile(`[ \t]{2,}`)               // collapse extra spaces
+)
+
+func cleanTextForTTS(text string) string {
+	text = reCodeFence.ReplaceAllString(text, " ")
+	text = reInlineCode.ReplaceAllString(text, " ")
+	text = reMdLink.ReplaceAllString(text, "$1")
+	text = reBareURL.ReplaceAllString(text, " ")
+	text = reHTMLTag.ReplaceAllString(text, " ")
+	text = reHeading.ReplaceAllString(text, "")
+	text = reBold.ReplaceAllStringFunc(text, func(m string) string {
+		sub := reBold.FindStringSubmatch(m)
+		if sub[1] != "" {
+			return sub[1]
+		}
+		return sub[2]
+	})
+	text = reItalic.ReplaceAllStringFunc(text, func(m string) string {
+		sub := reItalic.FindStringSubmatch(m)
+		if sub[1] != "" {
+			return sub[1]
+		}
+		return sub[2]
+	})
+	text = reBullet.ReplaceAllString(text, "")
+	text = reOrdered.ReplaceAllString(text, "")
+	text = reMultiSpace.ReplaceAllString(text, " ")
+	return strings.TrimSpace(text)
+}
+
 // SpeakAnswer converts a game guide answer to speech and returns the MP3 audio as a base64 string.
 // The frontend can decode this into a Blob URL and play it directly in the browser.
 func (a *App) SpeakAnswer(text string) (string, error) {
-	if strings.TrimSpace(text) == "" {
+	text = cleanTextForTTS(text)
+	if text == "" {
 		return "", fmt.Errorf("text cannot be empty")
 	}
 	processor, err := a.getAIProcessor()
