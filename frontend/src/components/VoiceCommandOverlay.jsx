@@ -1,4 +1,5 @@
 import { VoiceState } from '../hooks/useVoiceCommand'
+import ReactMarkdown from 'react-markdown'
 import './VoiceCommandOverlay.css'
 
 const ACTION_LABELS = {
@@ -78,7 +79,16 @@ export default function VoiceCommandOverlay({ voiceState, result, error, dismiss
               </div>
             )}
             {result.message && (
-              <p className="vc-message">{result.message}</p>
+              <div className="vc-message">
+                <ReactMarkdown
+                  components={{
+                    a: ({ href, children }) => (
+                      <a href={href} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>{children}</a>
+                    ),
+                    p: ({ children }) => <span>{children}</span>,
+                  }}
+                >{result.message}</ReactMarkdown>
+              </div>
             )}
             <button className="vc-dismiss-btn" onClick={dismiss}>Dismiss</button>
           </>

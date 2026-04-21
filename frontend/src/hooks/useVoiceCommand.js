@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback, useState } from 'react'
-import { ProcessVoiceCommand } from '../../wailsjs/go/main/App'
+import { ProcessVoiceCommand, SpeakAnswer, GetSettings } from '../../wailsjs/go/main/App'
 
 // States the voice command system can be in.
 export const VoiceState = {
@@ -176,6 +176,25 @@ export default function useVoiceCommand() {
           const commandResult = await ProcessVoiceCommand(base64)
           setResult(commandResult)
           setVoiceState(VoiceState.RESULT)
+
+          // Play TTS for game guide answers if voice feedback is enabled.
+          if (commandResult?.message) {
+            try {
+              const settings = await GetSettings()
+              if (settings?.voiceFeedback) {
+                const b64   = await SpeakAnswer(commandResult.message)
+                const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0))
+                const blob  = new Blob([bytes], { type: 'audio/mpeg' })
+                const url   = URL.createObjectURL(blob)
+                const audio = new Audio(url)
+                audio.onended = () => URL.revokeObjectURL(url)
+                audio.onerror = () => URL.revokeObjectURL(url)
+                await audio.play()
+              }
+            } catch (ttsErr) {
+              console.error('TTS playback error:', ttsErr)
+            }
+          }
         } catch (err) {
           setError(err?.message ?? String(err))
           setVoiceState(VoiceState.ERROR)
