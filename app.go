@@ -508,6 +508,16 @@ type SettingsDTO struct {
 	OpenAIAPIKey  string         `json:"openAIApiKey"`
 	VoiceFeedback bool           `json:"voiceFeedback"`
 	HotkeyConfig  *hotkey.Config `json:"hotkeyConfig,omitempty"`
+
+	// ElevenLabs co-host voice
+	ElevenLabsAPIKey  string `json:"elevenLabsApiKey"`
+	ElevenLabsVoiceID string `json:"elevenLabsVoiceId"`
+	ElevenLabsModelID string `json:"elevenLabsModelId"`
+
+	// AI Co-Host personality
+	CoHostEnabled     bool   `json:"coHostEnabled"`
+	CoHostName        string `json:"coHostName"`
+	CoHostPersonality string `json:"coHostPersonality"`
 }
 
 // GetSettings loads current settings from the database.
@@ -552,6 +562,12 @@ func (a *App) GetSettings() SettingsDTO {
 			}
 			return &c
 		}(),
+		ElevenLabsAPIKey:  getString("elevenlabs_api_key"),
+		ElevenLabsVoiceID: getString("elevenlabs_voice_id"),
+		ElevenLabsModelID: getString("elevenlabs_model_id"),
+		CoHostEnabled:     getBool("cohost_enabled"),
+		CoHostName:        getString("cohost_name"),
+		CoHostPersonality: getString("cohost_personality"),
 	}
 }
 
@@ -571,6 +587,12 @@ func (a *App) SaveSettings(s SettingsDTO) error {
 		"chat_filter_cooldown_ms": strconv.FormatInt(s.CooldownMs, 10),
 		"openai_api_key":          s.OpenAIAPIKey,
 		"voice_feedback_enabled":  boolStr(s.VoiceFeedback),
+		"elevenlabs_api_key":      s.ElevenLabsAPIKey,
+		"elevenlabs_voice_id":     s.ElevenLabsVoiceID,
+		"elevenlabs_model_id":     s.ElevenLabsModelID,
+		"cohost_enabled":          boolStr(s.CoHostEnabled),
+		"cohost_name":             s.CoHostName,
+		"cohost_personality":      s.CoHostPersonality,
 	}
 
 	// Persist hotkey config and re-register if it changed.
@@ -1907,4 +1929,94 @@ func (a *App) SpeakAnswer(text string) (string, error) {
 		return "", err
 	}
 	return base64.StdEncoding.EncodeToString(audio), nil
+}
+
+// ─── AI Co-Host ───────────────────────────────────────────────────────────────
+
+// CoHostResponseDTO is the payload returned to the frontend after the co-host speaks.
+type CoHostResponseDTO struct {
+	Text       string `json:"text"`
+	AudioB64   string `json:"audioB64"`
+	ActiveGame string `json:"activeGame"` // current Twitch stream category
+}
+
+// coHostSynthesize picks ElevenLabs when credentials are configured, otherwise
+// falls back to OpenAI gpt-4o-mini-tts so the co-host always has a voice.
+func (a *App) coHostSynthesize(text string) (string, error) {
+	text = cleanTextForTTS(text)
+	if text == "" {
+		return "", fmt.Errorf("text cannot be empty")
+	}
+
+	apiKey, _ := a.database.GetSetting("elevenlabs_api_key")
+	voiceID, _ := a.database.GetSetting("elevenlabs_voice_id")
+	modelID, _ := a.database.GetSetting("elevenlabs_model_id")
+
+	if apiKey != "" && voiceID != "" {
+		audio, err := ai.ElevenLabsSpeakText(a.ctx, text, apiKey, voiceID, modelID)
+		if err != nil {
+			return "", err
+		}
+		return base64.StdEncoding.EncodeToString(audio), nil
+	}
+
+	// Fallback: OpenAI TTS (requires openai_api_key)
+	processor, err := a.getAIProcessor()
+	if err != nil {
+		return "", fmt.Errorf("no ElevenLabs credentials and no OpenAI key configured")
+	}
+	audio, err := processor.SpeakText(a.ctx, text, "Speak like an enthusiastic, friendly gaming co-host.")
+	if err != nil {
+		return "", err
+	}
+	return base64.StdEncoding.EncodeToString(audio), nil
+}
+
+// CoHostSpeakText synthesizes arbitrary text in the co-host's voice.
+// The streamer types what they want said; the co-host says it.
+// Returns base64-encoded MP3 audio.
+func (a *App) CoHostSpeakText(text string) (string, error) {
+	return a.coHostSynthesize(text)
+}
+
+// CoHostRespondToChat generates an AI co-host reply to a viewer's chat message,
+// speaks it with the co-host's voice, and returns both the text and audio.
+func (a *App) CoHostRespondToChat(chatMessage, username string) (*CoHostResponseDTO, error) {
+	processor, err := a.getAIProcessor()
+	if err != nil {
+		return nil, err
+	}
+
+	info, _ := a.GetMyChannelInfo()
+	gameName := ""
+	if info != nil {
+		gameName = info.GameName
+	}
+
+	coHostName, _ := a.database.GetSetting("cohost_name")
+	personality, _ := a.database.GetSetting("cohost_personality")
+
+	responseText, err := processor.RespondAsCoHost(a.ctx, chatMessage, username, gameName, coHostName, personality)
+	if err != nil {
+		return nil, err
+	}
+
+	audioB64, synthErr := a.coHostSynthesize(responseText)
+	if synthErr != nil {
+		// Return text even when TTS fails so the streamer still sees the reply.
+		return &CoHostResponseDTO{Text: responseText, ActiveGame: gameName}, nil
+	}
+
+	return &CoHostResponseDTO{Text: responseText, AudioB64: audioB64, ActiveGame: gameName}, nil
+}
+
+// ClearCoHostSession resets the co-host's conversation memory so the next
+// session starts without prior context.
+func (a *App) ClearCoHostSession() error {
+	processor, err := a.getAIProcessor()
+	if err != nil {
+		return err
+	}
+	processor.ClearCoHostSession()
+	return nil
 }

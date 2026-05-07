@@ -11,6 +11,7 @@ import Rewards from './pages/Rewards'
 import Predictions from './pages/Predictions'
 import Tools from './pages/Tools'
 import Clips from './pages/Clips'
+import CoHost from './pages/CoHost'
 import useChatNotification from './hooks/useChatNotification'
 import useVoiceCommand from './hooks/useVoiceCommand'
 import VoiceCommandOverlay from './components/VoiceCommandOverlay'
@@ -50,6 +51,9 @@ export default function App() {
           </NavLink>
           <NavLink to="/tools" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>
             Tools
+          </NavLink>
+          <NavLink to="/co-host" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>
+            Co-Host
           </NavLink>
           <NavLink to="/clips" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>
             Clips
@@ -92,6 +96,7 @@ export default function App() {
           <Route path="/predictions" element={<Predictions />} />
           <Route path="/raids" element={<Raids />} />
           <Route path="/tools" element={<Tools />} />
+          <Route path="/co-host" element={<CoHost />} />
           <Route path="/clips" element={<Clips />} />
           <Route path="/stream-info" element={<StreamInfo />} />
           <Route path="/rewards" element={<Rewards />} />

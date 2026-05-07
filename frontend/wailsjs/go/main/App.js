@@ -14,12 +14,24 @@ export function CancelRedemption(arg1, arg2) {
   return window['go']['main']['App']['CancelRedemption'](arg1, arg2);
 }
 
+export function ClearCoHostSession() {
+  return window['go']['main']['App']['ClearCoHostSession']();
+}
+
 export function ClearCustomSound() {
   return window['go']['main']['App']['ClearCustomSound']();
 }
 
 export function ClearGameSession() {
   return window['go']['main']['App']['ClearGameSession']();
+}
+
+export function CoHostRespondToChat(arg1, arg2) {
+  return window['go']['main']['App']['CoHostRespondToChat'](arg1, arg2);
+}
+
+export function CoHostSpeakText(arg1) {
+  return window['go']['main']['App']['CoHostSpeakText'](arg1);
 }
 
 export function ConnectEventSub() {

@@ -8,9 +8,15 @@ export function CancelRaid():Promise<void>;
 
 export function CancelRedemption(arg1:string,arg2:string):Promise<void>;
 
+export function ClearCoHostSession():Promise<void>;
+
 export function ClearCustomSound():Promise<void>;
 
 export function ClearGameSession():Promise<void>;
+
+export function CoHostRespondToChat(arg1:string,arg2:string):Promise<main.CoHostResponseDTO>;
+
+export function CoHostSpeakText(arg1:string):Promise<string>;
 
 export function ConnectEventSub():Promise<void>;
 

@@ -390,6 +390,121 @@ export default function Settings() {
           {busy ? 'Saving…' : saved ? '✓ Saved!' : 'Save settings'}
         </button>
       </div>
+
+      {/* AI Co-Host */}
+      <div className="card">
+        <div className="card-title">AI Co-Host</div>
+        <p className="setting-desc">
+          Configure your ElevenLabs voice co-host — a real-time AI companion that engages chat
+          on your behalf. Perfect for late-night streams when you can't speak aloud.
+        </p>
+        <div className="settings-group">
+
+          <div className="setting-row">
+            <div>
+              <div className="setting-label">Co-host name</div>
+              <div className="setting-description">How the co-host introduces themselves in chat responses.</div>
+            </div>
+            <input
+              className="text-input"
+              type="text"
+              placeholder="Spark"
+              value={s.coHostName || ''}
+              onChange={e => setS({ ...s, coHostName: e.target.value })}
+              style={{ width: 180 }}
+            />
+          </div>
+
+          <div className="setting-row" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 6 }}>
+            <div className="setting-label">Personality Guide</div>
+            <div className="setting-description">
+              Describe how the co-host should behave. The co-host already knows what game is being played —
+              just write the vibe you want and it will adapt naturally to the game context.
+            </div>
+            <textarea
+              className="text-input"
+              rows={4}
+              placeholder="e.g. Typical New York bus driver — full attitude, zero patience, bravado to spare. Short punchy replies."
+              value={s.coHostPersonality || ''}
+              onChange={e => setS({ ...s, coHostPersonality: e.target.value })}
+              style={{ resize: 'vertical', fontFamily: 'inherit' }}
+            />
+          </div>
+
+          <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '4px 0' }} />
+          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 2 }}>
+            ElevenLabs Voice (recommended)
+          </div>
+
+          <div className="setting-row" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 6 }}>
+            <div className="setting-label">ElevenLabs API Key</div>
+            <div className="setting-description">
+              Get yours at{' '}
+              <a href="https://elevenlabs.io" target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>
+                elevenlabs.io
+              </a>. Leave blank to fall back to OpenAI TTS.
+            </div>
+            <input
+              className="text-input"
+              type="password"
+              placeholder="sk_…"
+              value={s.elevenLabsApiKey || ''}
+              onChange={e => setS({ ...s, elevenLabsApiKey: e.target.value })}
+              autoComplete="off"
+              spellCheck={false}
+            />
+            {s.elevenLabsApiKey
+              ? <span style={{ fontSize: 12, color: 'var(--text-success, #4caf50)' }}>&#x2713; ElevenLabs key set</span>
+              : <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>No key — will use OpenAI TTS as fallback</span>
+            }
+          </div>
+
+          <div className="setting-row" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 6 }}>
+            <div className="setting-label">Voice ID</div>
+            <div className="setting-description">
+              The ElevenLabs voice ID to use (found in your ElevenLabs voice library).
+            </div>
+            <input
+              className="text-input"
+              type="text"
+              placeholder="e.g. V0cljQmo7wpx8LTdbqfJ"
+              value={s.elevenLabsVoiceId || ''}
+              onChange={e => setS({ ...s, elevenLabsVoiceId: e.target.value })}
+              spellCheck={false}
+            />
+          </div>
+
+          <div className="setting-row">
+            <div>
+              <div className="setting-label">Model</div>
+              <div className="setting-description">
+                Eleven v3 gives the most expressive results; Multilingual v2 is fast and reliable.
+              </div>
+            </div>
+            <select
+              className="text-input"
+              style={{ width: 'auto' }}
+              value={s.elevenLabsModelId || 'eleven_multilingual_v2'}
+              onChange={e => setS({ ...s, elevenLabsModelId: e.target.value })}
+            >
+              <option value="eleven_v3">Eleven v3 (most expressive)</option>
+              <option value="eleven_multilingual_v2">Multilingual v2 (fast)</option>
+              <option value="eleven_turbo_v2_5">Turbo v2.5 (lowest latency)</option>
+            </select>
+          </div>
+
+        </div>
+      </div>
+
+      <div className="save-row">
+        <button
+          className={`btn btn-primary${saved ? ' btn--saved' : ''}`}
+          onClick={handleSave}
+          disabled={busy || saved}
+        >
+          {busy ? 'Saving…' : saved ? '✓ Saved!' : 'Save settings'}
+        </button>
+      </div>
     </>
   )
 }

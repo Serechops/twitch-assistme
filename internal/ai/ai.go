@@ -9,15 +9,65 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 	"regexp"
 	"strings"
 	"sync"
+	"time"
 
 	openai "github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
 	"github.com/openai/openai-go/packages/param"
 	"github.com/openai/openai-go/responses"
 )
+
+// elevenLabsHTTPClient is reused across ElevenLabs calls to keep connections alive.
+var elevenLabsHTTPClient = &http.Client{Timeout: 60 * time.Second}
+
+// ElevenLabsSpeakText calls the ElevenLabs text-to-speech API and returns raw MP3 bytes.
+// This is a package-level helper that does not require a Processor instance.
+func ElevenLabsSpeakText(ctx context.Context, text, apiKey, voiceID, modelID string) ([]byte, error) {
+	if text == "" {
+		return nil, fmt.Errorf("elevenlabs: text is empty")
+	}
+	if modelID == "" {
+		modelID = "eleven_multilingual_v2"
+	}
+
+	body, err := json.Marshal(map[string]interface{}{
+		"text":     text,
+		"model_id": modelID,
+		"voice_settings": map[string]interface{}{
+			"stability":         0.45,
+			"similarity_boost":  0.80,
+			"style":             0.35,
+			"use_speaker_boost": true,
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	url := fmt.Sprintf("https://api.elevenlabs.io/v1/text-to-speech/%s?output_format=mp3_44100_128", voiceID)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("xi-api-key", apiKey)
+
+	resp, err := elevenLabsHTTPClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("elevenlabs: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		msg, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		return nil, fmt.Errorf("elevenlabs %d: %s", resp.StatusCode, string(msg))
+	}
+	return io.ReadAll(resp.Body)
+}
 
 // sourcesFooterRe matches a "Sources:" or "Source:" section the model may append
 // at the end of game guide responses, along with everything that follows it.
@@ -68,11 +118,12 @@ type GameSource struct {
 
 // Processor transcribes audio and executes AI-driven Twitch commands.
 type Processor struct {
-	client         openai.Client
-	handlers       ActionHandlers
-	mu             sync.Mutex
-	voiceSessionID string
-	gameSessionID  string
+	client          openai.Client
+	handlers        ActionHandlers
+	mu              sync.Mutex
+	voiceSessionID  string
+	gameSessionID   string
+	coHostSessionID string
 }
 
 // NewProcessor constructs a Processor with the given OpenAI API key and action handlers.
@@ -316,6 +367,75 @@ func (p *Processor) ClearGameSession() {
 	p.mu.Lock()
 	p.gameSessionID = ""
 	p.mu.Unlock()
+}
+
+// ClearCoHostSession resets the co-host conversation thread.
+func (p *Processor) ClearCoHostSession() {
+	p.mu.Lock()
+	p.coHostSessionID = ""
+	p.mu.Unlock()
+}
+
+// RespondAsCoHost generates a short, in-character co-host reply to a chat message.
+// coHostName is the co-host's display name; personality is an optional freeform
+// description added to the system prompt (e.g. "sarcastic but warm").
+// The method maintains a rolling conversation via previous_response_id so the
+// co-host remembers recent exchanges within a single streaming session.
+func (p *Processor) RespondAsCoHost(ctx context.Context, chatMessage, username, gameName, coHostName, personality string) (string, error) {
+	p.mu.Lock()
+	prevID := p.coHostSessionID
+	p.mu.Unlock()
+
+	if coHostName == "" {
+		coHostName = "Spark"
+	}
+	game := gameName
+	if game == "" {
+		game = "the stream"
+	}
+	personalityLine := ""
+	if strings.TrimSpace(personality) != "" {
+		personalityLine = strings.TrimSpace(personality) + "\n"
+	}
+
+	systemPrompt := fmt.Sprintf(
+		`You are %s, the AI co-host of this Twitch stream alongside Serechops (pronounced "Sarah Chops").
+%sSerechops is a dad who streams in the evenings after his family has gone to sleep, so he can't speak aloud — even a whisper risks waking the baby.
+That's where you come in: you are his voice, his hype man, and his chat companion rolled into one.
+You know the stream, you know the vibe, and you keep things lively so chat never feels like they're talking to an empty room.
+The streamer is currently playing %s.
+Keep every reply SHORT (1–2 sentences). Be warm, entertaining, and chat-friendly.
+Refer to the streamer as Serechops (never "the streamer"). Never break character.
+Do NOT start with "I". No hashtags or emojis unless the viewer used them.`,
+		coHostName, personalityLine, game,
+	)
+
+	input := fmt.Sprintf("%s: %s", username, chatMessage)
+
+	reqParams := responses.ResponseNewParams{
+		Model:        openai.ChatModelGPT4oMini,
+		Instructions: param.NewOpt(systemPrompt),
+		Input:        responses.ResponseNewParamsInputUnion{OfString: param.NewOpt(input)},
+		Store:        param.NewOpt(true),
+	}
+	if prevID != "" {
+		reqParams.PreviousResponseID = param.NewOpt(prevID)
+	}
+
+	resp, err := p.client.Responses.New(ctx, reqParams)
+	if err != nil {
+		// Clear stale session on error so the next call starts fresh.
+		p.mu.Lock()
+		p.coHostSessionID = ""
+		p.mu.Unlock()
+		return "", fmt.Errorf("co-host: %w", err)
+	}
+
+	p.mu.Lock()
+	p.coHostSessionID = resp.ID
+	p.mu.Unlock()
+
+	return strings.TrimSpace(resp.OutputText()), nil
 }
 
 // SpeakText converts text to speech using gpt-4o-mini-tts and returns the raw MP3 bytes.

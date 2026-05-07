@@ -185,6 +185,22 @@ export namespace main {
 	        this.isFeatured = source["isFeatured"];
 	    }
 	}
+	export class CoHostResponseDTO {
+	    text: string;
+	    audioB64: string;
+	    activeGame: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new CoHostResponseDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.text = source["text"];
+	        this.audioB64 = source["audioB64"];
+	        this.activeGame = source["activeGame"];
+	    }
+	}
 	export class CreateRewardInput {
 	    title: string;
 	    cost: number;
@@ -553,6 +569,12 @@ export namespace main {
 	    openAIApiKey: string;
 	    voiceFeedback: boolean;
 	    hotkeyConfig?: hotkey.Config;
+	    elevenLabsApiKey: string;
+	    elevenLabsVoiceId: string;
+	    elevenLabsModelId: string;
+	    coHostEnabled: boolean;
+	    coHostName: string;
+	    coHostPersonality: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new SettingsDTO(source);
@@ -568,6 +590,12 @@ export namespace main {
 	        this.openAIApiKey = source["openAIApiKey"];
 	        this.voiceFeedback = source["voiceFeedback"];
 	        this.hotkeyConfig = this.convertValues(source["hotkeyConfig"], hotkey.Config);
+	        this.elevenLabsApiKey = source["elevenLabsApiKey"];
+	        this.elevenLabsVoiceId = source["elevenLabsVoiceId"];
+	        this.elevenLabsModelId = source["elevenLabsModelId"];
+	        this.coHostEnabled = source["coHostEnabled"];
+	        this.coHostName = source["coHostName"];
+	        this.coHostPersonality = source["coHostPersonality"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
